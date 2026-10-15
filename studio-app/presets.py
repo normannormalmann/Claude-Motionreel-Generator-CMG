@@ -7,7 +7,9 @@ gesichert und weitergegeben werden können.
 import json
 import os
 import re
+import shutil
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -22,7 +24,8 @@ MAX_COLORS = 6
 MAX_DURATION_SECONDS = 600
 FORMATS = ("16:9", "9:16", "1:1", "4:5")
 COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
-LOGO_PATTERN = re.compile(r"^assets/[^\\:*?\"<>|]+\.(png|jpe?g|gif|webp)$", re.IGNORECASE)
+LOGO_PATTERN = re.compile(r"^assets/[^\\:*?\"<>|\x00-\x1f]+\.(png|jpe?g|gif|webp)$", re.IGNORECASE)
+CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 SHOWREEL_TEXT = (
     "Erstelle ein 15 Sekunden langes Motion-Design-Showreel für ein fiktives Designstudio.\n"
@@ -68,8 +71,14 @@ class PresetError(ValueError):
     """Ungültige Vorlage – die Meldung ist für Menschen gedacht."""
 
 
-def _clean_text(value, limit, label, required=False):
-    text = str(value or "").strip()
+def _clean_text(value, limit, label, required=False, single_line=False):
+    if value is None:
+        value = ""
+    if not isinstance(value, str):
+        raise PresetError("{} muss ein Text sein.".format(label))
+    text = value.strip()
+    if single_line and CONTROL_CHARACTERS.search(text):
+        raise PresetError("{} darf keine Zeilenumbrüche oder Steuerzeichen enthalten.".format(label))
     if required and not text:
         raise PresetError("Bitte {} angeben.".format(label))
     if len(text) > limit:
@@ -86,24 +95,24 @@ def _clean_brand(raw):
     for color in colors:
         if not isinstance(color, str) or not COLOR_PATTERN.match(color):
             raise PresetError("Ungültige Farbe: {}".format(color))
-    brand_format = str(raw.get("format") or "")
+    brand_format = raw.get("format") or ""
     if brand_format and brand_format not in FORMATS:
         raise PresetError("Unbekanntes Format: {}".format(brand_format))
     duration = raw.get("duration") or 0
     try:
         duration = int(duration)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise PresetError("Die Länge muss eine Zahl in Sekunden sein.")
     if not 0 <= duration <= MAX_DURATION_SECONDS:
         raise PresetError("Die Länge darf höchstens {} Sekunden betragen.".format(MAX_DURATION_SECONDS))
-    logo = str(raw.get("logo") or "").strip()
+    logo = _clean_text(raw.get("logo"), MAX_FONTS, "Das Logo", single_line=True)
     if logo and (".." in logo or not LOGO_PATTERN.match(logo)):
         raise PresetError("Das Logo muss eine Bilddatei im Ordner assets sein.")
     brand = {
         "format": brand_format,
         "duration": duration,
         "colors": [c.upper() for c in colors],
-        "fonts": _clean_text(raw.get("fonts"), MAX_FONTS, "Schriften"),
+        "fonts": _clean_text(raw.get("fonts"), MAX_FONTS, "Schriften", single_line=True),
         "logo": logo,
         "notes": _clean_text(raw.get("notes"), MAX_NOTES, "Hinweise"),
     }
@@ -129,25 +138,46 @@ class PresetStore:
 
     # ------------------------------------------------------------ Datei
 
+    def _backup_path(self, suffix):
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        return self.path.with_name("{}.{}-{}-{}".format(FILE_NAME, suffix, stamp, uuid.uuid4().hex[:6]))
+
     def _load_user_presets(self):
+        """Liest eigene Vorlagen. Gibt (vorlagen, unvollständig) zurück."""
         if not self.path.exists():
-            return []
+            return [], False
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            # Defekte Datei nicht überschreiben, sondern zur Sicherheit beiseitelegen.
-            os.replace(self.path, self.path.with_name(FILE_NAME + ".defekt"))
-            return []
-        entries = data.get("presets", []) if isinstance(data, dict) else []
+            raw_text = self.path.read_text(encoding="utf-8")
+        except OSError:
+            # Z. B. kurz gesperrt durch Virenscanner oder Cloud-Synchronisierung: nichts verändern.
+            raise PresetError("Die Vorlagen konnten gerade nicht gelesen werden. Bitte gleich noch einmal versuchen.")
+        try:
+            data = json.loads(raw_text)
+        except (ValueError, RecursionError):
+            # Defekte Datei nicht überschreiben, sondern mit Zeitstempel beiseitelegen.
+            try:
+                os.replace(self.path, self._backup_path("defekt"))
+            except OSError:
+                raise PresetError("Die Vorlagen-Datei ist beschädigt und konnte nicht gesichert werden.")
+            return [], False
+        entries = data.get("presets") if isinstance(data, dict) else None
+        if not isinstance(entries, list):
+            return [], True
         presets = []
         for entry in entries:
-            if not isinstance(entry, dict) or not entry.get("id"):
-                continue
             try:
+                if not isinstance(entry, dict) or not entry.get("id"):
+                    raise PresetError("ohne Kennung")
                 presets.append(dict(validate(entry), id=str(entry["id"])))
             except PresetError:
-                continue  # einzelne kaputte Einträge überspringen, Rest behalten
-        return presets
+                continue
+        return presets, len(presets) != len(entries)
+
+    def _write(self, presets, incomplete):
+        """Speichert; wurden beim Lesen Einträge verworfen, bleibt das Original als Sicherung erhalten."""
+        if incomplete and self.path.exists():
+            shutil.copy2(self.path, self._backup_path("sicherung"))
+        self._save_user_presets(presets)
 
     def _save_user_presets(self, presets):
         temp = self.path.with_name(FILE_NAME + ".tmp")
@@ -159,7 +189,7 @@ class PresetStore:
 
     def list_all(self):
         with self._lock:
-            user = self._load_user_presets()
+            user, _ = self._load_user_presets()
         builtins = [dict(p, builtin=True) for p in BUILTIN_PRESETS]
         return builtins + [dict(p, builtin=False) for p in user]
 
@@ -170,7 +200,7 @@ class PresetStore:
         if preset_id.startswith("builtin-"):
             raise PresetError("Eingebaute Vorlagen können nicht geändert werden. Lege eine Kopie an.")
         with self._lock:
-            presets = self._load_user_presets()
+            presets, incomplete = self._load_user_presets()
             existing = next((i for i, p in enumerate(presets) if p["id"] == preset_id), None)
             if existing is None:
                 if len(presets) >= MAX_PRESETS:
@@ -180,16 +210,16 @@ class PresetStore:
             else:
                 preset["id"] = preset_id
                 presets = presets[:existing] + [preset] + presets[existing + 1:]
-            self._save_user_presets(presets)
+            self._write(presets, incomplete)
         return dict(preset, builtin=False)
 
     def delete(self, preset_id):
         with self._lock:
-            presets = self._load_user_presets()
+            presets, incomplete = self._load_user_presets()
             remaining = [p for p in presets if p["id"] != preset_id]
             if len(remaining) == len(presets):
                 raise PresetError("Diese Vorlage gibt es nicht (mehr).")
-            self._save_user_presets(remaining)
+            self._write(remaining, incomplete)
 
     def import_presets(self, items):
         """Übernimmt gültige Vorlagen als neue Kopien. Gibt (übernommen, übersprungen) zurück."""
@@ -204,13 +234,14 @@ class PresetStore:
             except PresetError:
                 skipped += 1
         with self._lock:
-            presets = self._load_user_presets()
-            room = MAX_PRESETS - len(presets)
-            skipped += max(0, len(imported) - room)
-            self._save_user_presets(presets + imported[:max(0, room)])
-        return min(len(imported), max(0, room)), skipped
+            presets, incomplete = self._load_user_presets()
+            room = max(0, MAX_PRESETS - len(presets))
+            accepted = imported[:room]
+            skipped += len(imported) - len(accepted)
+            self._write(presets + accepted, incomplete)
+        return len(accepted), skipped
 
     def export(self):
         with self._lock:
-            presets = self._load_user_presets()
+            presets, _ = self._load_user_presets()
         return {"version": FILE_VERSION, "presets": [{k: v for k, v in p.items() if k != "id"} for p in presets]}

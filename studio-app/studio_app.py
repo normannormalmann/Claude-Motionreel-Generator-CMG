@@ -171,7 +171,10 @@ class StudioHandler(BaseHTTPRequestHandler):
         handler = routes.get(url.path)
         if handler is None:
             return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
-        return handler()
+        try:
+            return handler()
+        except PresetError as error:
+            return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, str(error))
 
     def do_POST(self):
         url = urlparse(self.path)
@@ -229,7 +232,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                 raise PresetError("Die Datei ist leer oder zu groß.")
             try:
                 data = json.loads(self.rfile.read(length).decode("utf-8"))
-            except ValueError:
+            except (ValueError, RecursionError):
                 raise PresetError("Die Datei ist keine gültige Vorlagen-Datei.")
             imported, skipped = store.import_presets(data)
             return self._send_json({"imported": imported, "skipped": skipped})

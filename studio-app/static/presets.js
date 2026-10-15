@@ -53,8 +53,28 @@
 
   // ------------------------------------------------------------ Fenster
 
-  const open = (id) => { $(id).hidden = false; };
-  const close = (id) => { $(id).hidden = true; };
+  let returnFocus = null;
+  let editorSnapshot = '';
+  const allClosed = () => OVERLAYS.every((overlayId) => $(overlayId).hidden);
+
+  function open(id) {
+    if (allClosed()) returnFocus = document.activeElement;
+    OVERLAYS.forEach((overlayId) => { $(overlayId).hidden = overlayId !== id; });
+  }
+
+  function close(id) {
+    if ($(id).hidden) return;
+    $(id).hidden = true;
+    if (allClosed() && returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    if (allClosed()) returnFocus = null;
+  }
+
+  // Schließen auf Wunsch: Beim Editor nur nach Rückfrage, falls etwas geändert wurde.
+  function requestClose(id) {
+    if (id === 'preset-editor' && JSON.stringify(collectEditor()) !== editorSnapshot
+        && !window.confirm('Ungespeicherte Änderungen verwerfen?')) return;
+    close(id);
+  }
 
   function makeButton(label, onClick, className) {
     const button = document.createElement('button');
@@ -80,7 +100,7 @@
 
   function usePreset(preset) {
     const names = placeholders(preset.text);
-    if (!names.length && !preset.brand) { setPrompt(compose(preset, {})); return; }
+    if (!names.length && !preset.brand) { close('preset-manager'); setPrompt(compose(preset, {})); return; }
     filling = preset;
     $('fill-title').textContent = `Vorlage „${preset.name}“`;
     const form = $('fill-form');
@@ -123,8 +143,8 @@
   function applyFill() {
     const values = {};
     $('fill-form').querySelectorAll('input').forEach((input) => { values[input.dataset.name] = input.value; });
-    setPrompt(compose(filling, values));
     close('preset-fill');
+    setPrompt(compose(filling, values));
   }
 
   function presetMeta(preset) {
@@ -148,7 +168,7 @@
       info.append(name, meta);
       const actions = document.createElement('div');
       actions.className = 'preset-actions';
-      actions.append(makeButton('Verwenden', () => { close('preset-manager'); usePreset(preset); }, 'ghost small'));
+      actions.append(makeButton('Verwenden', () => usePreset(preset), 'ghost small'));
       if (preset.builtin) {
         actions.append(makeButton('Kopieren', () => openEditor(preset, { copy: true }), 'ghost small'));
       } else {
@@ -219,8 +239,8 @@
     $('ed-brand-box').open = Boolean(source.brand);
     $('ed-error').hidden = true;
     updatePlaceholderHint();
-    close('preset-manager');
     open('preset-editor');
+    editorSnapshot = JSON.stringify(collectEditor());
     $('ed-name').focus();
   }
 
@@ -297,10 +317,19 @@
     });
     OVERLAYS.forEach((id) => {
       const overlay = $(id);
-      overlay.addEventListener('click', (event) => { if (event.target === overlay) close(id); });
-      overlay.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => close(id)));
+      // Nur schließen, wenn Maus-Drücken UND Loslassen auf dem Hintergrund waren (nicht beim Markieren von Text).
+      let pressedOnBackdrop = false;
+      overlay.addEventListener('mousedown', (event) => { pressedOnBackdrop = event.target === overlay; });
+      overlay.addEventListener('click', (event) => {
+        if (id !== 'preset-editor' && pressedOnBackdrop && event.target === overlay) close(id);
+      });
+      overlay.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => requestClose(id)));
     });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') OVERLAYS.forEach(close); });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const visible = OVERLAYS.find((id) => !$(id).hidden);
+      if (visible) { event.stopPropagation(); requestClose(visible); }
+    });
   }
 
   window.CMGPresets = {
