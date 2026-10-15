@@ -23,8 +23,12 @@ $LogFile = if ($env:CMG_LOG_FILE) { $env:CMG_LOG_FILE } else { Join-Path $env:TE
 $ScriptDir = $PSScriptRoot
 # Die Python-Umgebung liegt bewusst außerhalb des Studio-Ordners: Dokumente werden oft per
 # OneDrive synchronisiert, und Tausende kleiner Dateien würden das lahmlegen.
-$VenvDir = Join-Path $env:LOCALAPPDATA 'Claude-Motion-Studio\venv'
+$AppDataDir = Join-Path $env:LOCALAPPDATA 'Claude-Motion-Studio'
+$VenvDir = Join-Path $AppDataDir 'venv'
 $VenvPython = Join-Path $VenvDir 'Scripts\python.exe'
+$VenvPythonW = Join-Path $VenvDir 'Scripts\pythonw.exe'
+$AppDir = Join-Path $AppDataDir 'app'
+$AppFiles = @('studio_app.py', 'claude_bridge.py', 'platform_support.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js')
 $HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- Hilfen
@@ -103,13 +107,18 @@ function Find-Python {
     return $null
 }
 
-# Kopiert eine Vorlage aus dem lokalen Repo oder lädt sie von GitHub.
-function Get-Template([string]$Name, [string]$Destination) {
+# Kopiert eine Datei aus dem lokalen Repo oder lädt sie von GitHub.
+function Get-RepoFile([string]$Relative, [string]$Destination) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
     if ($ScriptDir) {
-        $local = Join-Path $ScriptDir "studio-vorlage\$Name"
+        $local = Join-Path $ScriptDir ($Relative -replace '/', '\')
         if (Test-Path $local) { Copy-Item -LiteralPath $local -Destination $Destination -Force; return }
     }
-    Invoke-WebRequest -Uri "$RepoRaw/studio-vorlage/$Name" -OutFile $Destination -UseBasicParsing
+    Invoke-WebRequest -Uri "$RepoRaw/$Relative" -OutFile $Destination -UseBasicParsing
+}
+
+function Get-Template([string]$Name, [string]$Destination) {
+    Get-RepoFile "studio-vorlage/$Name" $Destination
 }
 
 # ---------------------------------------------------------------- Schritte
@@ -220,29 +229,50 @@ function Write-StudioFiles {
     Write-Ok 'CLAUDE.md mit den Studio-Regeln angelegt'
 }
 
+function Install-StudioApp {
+    Write-Step 'Installiere die Studio-App (Oberfläche im Browser)'
+    foreach ($file in $AppFiles) {
+        Get-RepoFile "studio-app/$file" (Join-Path $AppDir ($file -replace '/', '\'))
+    }
+    $config = @{ studio_dir = $StudioDir } | ConvertTo-Json
+    [IO.File]::WriteAllText((Join-Path $AppDataDir 'config.json'), $config, (New-Object Text.UTF8Encoding $false))
+    Invoke-Native $VenvPython @((Join-Path $AppDir 'make_icon.py'), $AppDir) 'Das App-Symbol konnte nicht erstellt werden'
+    Write-Ok 'Studio-App installiert'
+}
+
+function New-AppShortcut([string]$Folder) {
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut((Join-Path $Folder 'Motion Studio.lnk'))
+    # pythonw.exe startet ohne Konsolenfenster; das Studio öffnet sich im Browser.
+    $shortcut.TargetPath = $VenvPythonW
+    $shortcut.Arguments = "`"$(Join-Path $AppDir 'studio_app.py')`""
+    $shortcut.WorkingDirectory = $StudioDir
+    $shortcut.IconLocation = Join-Path $AppDir 'icon.ico'
+    $shortcut.Description = 'Videos mit Claude erstellen'
+    $shortcut.Save()
+}
+
 function New-Launchers {
-    $startScript = Join-Path $StudioDir 'studio-starten.ps1'
+    # Für Fortgeschrittene: Claude Code direkt in der Konsole.
+    $terminalScript = Join-Path $StudioDir 'studio-im-terminal.ps1'
     $content = @(
-        '# Startet das Motion Studio (Claude Code im Studio-Ordner).',
+        '# Startet Claude Code im Studio-Ordner (Konsolen-Modus).',
         '$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")',
         'Set-Location -LiteralPath $PSScriptRoot',
         'claude'
     ) -join "`r`n"
-    [IO.File]::WriteAllText($startScript, $content, (New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText($terminalScript, $content, (New-Object Text.UTF8Encoding $false))
+    $oldScript = Join-Path $StudioDir 'studio-starten.ps1'
+    if (Test-Path $oldScript) { Remove-Item -LiteralPath $oldScript -Force }
 
-    try {
-        $desktop = [Environment]::GetFolderPath('Desktop')
-        $shell = New-Object -ComObject WScript.Shell
-        $shortcut = $shell.CreateShortcut((Join-Path $desktop 'Motion Studio.lnk'))
-        $shortcut.TargetPath = Join-Path $PSHOME 'powershell.exe'
-        $shortcut.Arguments = "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
-        $shortcut.WorkingDirectory = $StudioDir
-        $shortcut.Description = 'Claude Motionreel Generator starten'
-        $shortcut.Save()
-        Write-Ok 'Verknüpfung "Motion Studio" auf dem Desktop angelegt'
-    } catch {
-        Write-Warn "Desktop-Verknüpfung konnte nicht angelegt werden: $($_.Exception.Message)"
+    foreach ($place in @('Desktop', 'Programs')) {
+        try {
+            New-AppShortcut ([Environment]::GetFolderPath($place))
+        } catch {
+            Write-Warn "Verknüpfung ($place) konnte nicht angelegt werden: $($_.Exception.Message)"
+        }
     }
+    Write-Ok 'Verknüpfung "Motion Studio" auf dem Desktop und im Startmenü angelegt'
 }
 
 function Initialize-Studio([string]$Python) {
@@ -253,6 +283,7 @@ function Initialize-Studio([string]$Python) {
     New-StudioVenv $Python
     Install-RenderTools
     Write-StudioFiles
+    Install-StudioApp
     New-Launchers
 }
 
@@ -262,6 +293,9 @@ function Test-Installation {
     Write-Ok ("Python:      " + ((& $VenvPython --version) | Select-Object -First 1))
     Write-Ok ("FFmpeg:      " + ((& ffmpeg -version) | Select-Object -First 1))
     if (Test-Command 'node') { Write-Ok ("Node.js:     " + (& node --version)) } else { Write-Warn 'Node.js fehlt (optional)' }
+
+    Invoke-Native $VenvPython @('-c', 'import sys; sys.path.insert(0, sys.argv[1]); import studio_app', $AppDir) 'Die Studio-App lässt sich nicht laden'
+    Write-Ok 'Studio-App:  bereit'
 
     Write-Step 'Selbsttest: kurze Testanimation rendern'
     $ffmpeg = (Get-Command ffmpeg).Source
@@ -276,19 +310,18 @@ function Show-NextSteps {
     Write-Host "Videos landen:  $(Join-Path $StudioDir 'exports')"
     Write-Host ''
     Write-Host 'So geht es weiter:'
-    Write-Host '  1. Starte das Studio: Doppelklick auf "Motion Studio" auf dem Desktop.'
-    Write-Host '  2. Beim ersten Start meldest du dich bei Claude an.'
-    Write-Host '  3. Tippe /model und wähle Opus (falls verfügbar).'
-    Write-Host '  4. Kopiere einen Auftrag aus BEISPIEL-PROMPTS.md im Studio-Ordner.'
+    Write-Host '  1. Doppelklick auf "Motion Studio" auf dem Desktop. Das Studio öffnet sich im Browser.'
+    Write-Host '  2. Beim ersten Start meldest du dich dort bei Claude an.'
+    Write-Host '  3. Wähle eine Vorlage oder beschreibe dein Video und klicke auf "Senden".'
     Write-Host ''
 }
 
 function Start-StudioIfWanted {
     if ($NonInteractive) { return }
-    $answer = Read-Host 'Möchtest du das Studio jetzt starten? [J/n]'
+    $answer = Read-Host 'Möchtest du das Studio jetzt öffnen? [J/n]'
     if ($answer -match '^[nN]') { return }
-    Set-Location -LiteralPath $StudioDir
-    & claude
+    Start-Process -FilePath $VenvPythonW -ArgumentList "`"$(Join-Path $AppDir 'studio_app.py')`"" -WorkingDirectory $StudioDir
+    Write-Ok 'Das Studio öffnet sich in deinem Browser.'
 }
 
 function Main {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Claude Motionreel Generator (CMG) – Installer für macOS und Linux.
 #
-# Richtet Claude Code, Python, Playwright (Chromium), FFmpeg und den
-# Studio-Ordner ein. Kann beliebig oft ausgeführt werden: Bereits Vorhandenes
+# Richtet Claude Code, Python, Playwright (Chromium), FFmpeg, den
+# Studio-Ordner und die Studio-App ein. Kann beliebig oft ausgeführt werden: Bereits Vorhandenes
 # wird erkannt und übersprungen.
 #
 # Optionale Umgebungsvariablen:
@@ -23,8 +23,11 @@ PKG_MANAGER=""
 PYTHON=""
 # Die Python-Umgebung liegt bewusst außerhalb des Studio-Ordners: Dokumente werden
 # oft per iCloud synchronisiert, und Tausende kleiner Dateien würden das lahmlegen.
-VENV_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-motion-studio/venv"
+APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-motion-studio"
+VENV_DIR="$APP_DATA_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
+APP_DIR="$APP_DATA_DIR/app"
+APP_FILES=(studio_app.py claude_bridge.py platform_support.py make_icon.py static/index.html static/app.css static/app.js)
 
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
@@ -82,15 +85,18 @@ find_python() {
   return 1
 }
 
-# Kopiert eine Vorlage aus dem lokalen Repo oder lädt sie von GitHub.
-fetch_template() {
-  local name="$1" dest="$2"
-  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/studio-vorlage/$name" ]; then
-    cp "$SCRIPT_DIR/studio-vorlage/$name" "$dest"
+# Kopiert eine Datei aus dem lokalen Repo oder lädt sie von GitHub.
+fetch_repo_file() {
+  local relative="$1" dest="$2"
+  mkdir -p "$(dirname "$dest")"
+  if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/$relative" ]; then
+    cp "$SCRIPT_DIR/$relative" "$dest"
   else
-    curl -fsSL "$REPO_RAW/studio-vorlage/$name" -o "$dest"
+    curl -fsSL "$REPO_RAW/$relative" -o "$dest"
   fi
 }
+
+fetch_template() { fetch_repo_file "studio-vorlage/$1" "$2"; }
 
 # ---------------------------------------------------------------- Schritte
 
@@ -324,11 +330,39 @@ PYEOF
   ok "CLAUDE.md mit den Studio-Regeln angelegt"
 }
 
-write_launcher_script() {
+install_studio_app() {
+  step "Installiere die Studio-App (Oberfläche im Browser)"
+  local file
+  for file in "${APP_FILES[@]}"; do
+    fetch_repo_file "studio-app/$file" "$APP_DIR/$file"
+  done
+  "$VENV_PYTHON" - "$APP_DATA_DIR/config.json" "$STUDIO_DIR" <<'PYCONF'
+import json, sys
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump({"studio_dir": sys.argv[2]}, handle, ensure_ascii=False)
+PYCONF
+  "$VENV_PYTHON" "$APP_DIR/make_icon.py" "$APP_DIR"
+  ok "Studio-App installiert"
+}
+
+# Startskript für die Studio-App (öffnet den Browser, kein Terminal nötig).
+write_app_script() {
+  local target="$1"
+  {
+    printf '#!/bin/bash\n'
+    printf '# Startet die Motion-Studio-App.\n'
+    printf 'export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"\n'
+    printf 'exec %q %q\n' "$VENV_PYTHON" "$APP_DIR/studio_app.py"
+  } >"$target"
+  chmod +x "$target"
+}
+
+# Für Fortgeschrittene: Claude Code direkt im Terminal.
+write_terminal_script() {
   local target="$1"
   {
     printf '#!/usr/bin/env bash\n'
-    printf '# Startet das Motion Studio (Claude Code im Studio-Ordner).\n'
+    printf '# Startet Claude Code im Studio-Ordner (Terminal-Modus).\n'
     printf 'export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"\n'
     printf 'cd %q || exit 1\n' "$STUDIO_DIR"
     printf 'claude\n'
@@ -336,31 +370,52 @@ write_launcher_script() {
   chmod +x "$target"
 }
 
-create_launchers() {
-  write_launcher_script "$STUDIO_DIR/studio-starten.sh"
+create_macos_app() {
+  local app="$HOME/Applications/Motion Studio.app"
+  mkdir -p "$app/Contents/MacOS"
+  cat >"$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>motion-studio</string>
+  <key>CFBundleIdentifier</key><string>com.github.cmg.motion-studio</string>
+  <key>CFBundleName</key><string>Motion Studio</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSUIElement</key><true/>
+  <key>CFBundleIconFile</key><string>icon</string>
+</dict>
+</plist>
+PLIST
+  write_app_script "$app/Contents/MacOS/motion-studio"
+  mkdir -p "$app/Contents/Resources"
+  sips -s format icns "$APP_DIR/icon.png" --out "$app/Contents/Resources/icon.icns" >/dev/null 2>&1 || true
+  ok "„Motion Studio“ im Ordner Programme (Benutzer) angelegt"
 
-  if [ "$OS_NAME" = "macOS" ]; then
-    if [ -d "$HOME/Desktop" ]; then
-      if write_launcher_script "$HOME/Desktop/Motion Studio.command" 2>/dev/null; then
-        ok "Startsymbol „Motion Studio“ auf dem Schreibtisch angelegt"
-      else
-        warn "Kein Zugriff auf den Schreibtisch – starte das Studio mit: bash $STUDIO_DIR/studio-starten.sh"
-      fi
+  if [ -d "$HOME/Desktop" ]; then
+    rm -f "$HOME/Desktop/Motion Studio.command" 2>/dev/null || true
+    if ln -sfn "$app" "$HOME/Desktop/Motion Studio.app" 2>/dev/null; then
+      ok "Startsymbol „Motion Studio“ auf dem Schreibtisch angelegt"
+    else
+      warn "Kein Zugriff auf den Schreibtisch – starte das Studio über Finder → Programme → Motion Studio."
     fi
-    return 0
   fi
+}
 
+create_linux_launchers() {
   local apps_dir="$HOME/.local/share/applications"
   local entry="$apps_dir/motion-studio.desktop"
   mkdir -p "$apps_dir"
+  write_app_script "$APP_DATA_DIR/motion-studio.sh"
   cat >"$entry" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Motion Studio
-Comment=Claude Motionreel Generator starten
-Exec=bash "$STUDIO_DIR/studio-starten.sh"
-Terminal=true
-Icon=video-x-generic
+Comment=Videos mit Claude erstellen
+Exec="$APP_DATA_DIR/motion-studio.sh"
+Terminal=false
+Icon=$APP_DIR/icon.png
 Categories=AudioVideo;Video;
 EOF
   chmod +x "$entry"
@@ -378,6 +433,12 @@ EOF
   fi
 }
 
+create_launchers() {
+  write_terminal_script "$STUDIO_DIR/studio-im-terminal.sh"
+  rm -f "$STUDIO_DIR/studio-starten.sh"
+  if [ "$OS_NAME" = "macOS" ]; then create_macos_app; else create_linux_launchers; fi
+}
+
 setup_studio() {
   step "Richte den Studio-Ordner ein: $STUDIO_DIR"
   if ! mkdir -p "$STUDIO_DIR/exports" "$STUDIO_DIR/assets" "$STUDIO_DIR/tools"; then
@@ -390,6 +451,7 @@ setup_studio() {
   create_venv
   install_render_tools
   write_studio_files
+  install_studio_app
   create_launchers
 }
 
@@ -399,6 +461,9 @@ verify_installation() {
   ok "Python:      $("$VENV_PYTHON" --version 2>&1)"
   ok "FFmpeg:      $(ffmpeg -version 2>/dev/null | head -n 1 | cut -d' ' -f1-3)"
   if has node; then ok "Node.js:     $(node --version)"; else warn "Node.js fehlt (optional)"; fi
+
+  "$VENV_PYTHON" -c 'import sys; sys.path.insert(0, sys.argv[1]); import studio_app' "$APP_DIR"     || die "Die Studio-App lässt sich nicht laden."
+  ok "Studio-App:  bereit"
 
   step "Selbsttest: kurze Testanimation rendern"
   if "$VENV_PYTHON" "$STUDIO_DIR/tools/selbsttest.py" --ffmpeg "$(command -v ffmpeg)"; then
@@ -414,28 +479,25 @@ verify_installation() {
 }
 
 print_next_steps() {
-  local launcher_hint="Doppelklick auf „Motion Studio“ auf dem Schreibtisch"
   printf '\n%s%s==> Fertig! Dein Motion Studio ist eingerichtet.%s\n\n' "$BOLD" "$GREEN" "$RESET"
   printf 'Studio-Ordner:  %s\n' "$STUDIO_DIR"
   printf 'Videos landen:  %s/exports\n\n' "$STUDIO_DIR"
   printf 'So geht es weiter:\n'
-  printf '  1. Starte das Studio: %s.\n' "$launcher_hint"
-  printf '  2. Beim ersten Start meldest du dich bei Claude an.\n'
-  printf '  3. Tippe /model und wähle Opus (falls verfügbar).\n'
-  printf '  4. Kopiere einen Auftrag aus BEISPIEL-PROMPTS.md im Studio-Ordner.\n\n'
-  printf 'Alternativ im Terminal starten:  bash %q\n\n' "$STUDIO_DIR/studio-starten.sh"
+  printf '  1. Doppelklick auf „Motion Studio“ auf dem Schreibtisch. Das Studio öffnet sich im Browser.\n'
+  printf '  2. Beim ersten Start meldest du dich dort bei Claude an.\n'
+  printf '  3. Wähle eine Vorlage oder beschreibe dein Video und klicke auf „Senden“.\n\n'
 }
 
 offer_to_start() {
   is_interactive || return 0
   local answer=""
-  read -r -p "Möchtest du das Studio jetzt starten? [J/n] " answer </dev/tty || true
+  read -r -p "Möchtest du das Studio jetzt öffnen? [J/n] " answer </dev/tty || true
   case "$answer" in
     [nN]*) return 0 ;;
   esac
-  exec 1>&3 2>&4
-  cd "$STUDIO_DIR"
-  claude </dev/tty || true
+  nohup "$VENV_PYTHON" "$APP_DIR/studio_app.py" >/dev/null 2>&1 &
+  disown || true
+  ok "Das Studio öffnet sich in deinem Browser."
 }
 
 main() {

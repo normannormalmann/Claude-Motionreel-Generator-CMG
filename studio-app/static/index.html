@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="studio-token" content="__TOKEN__">
+  <title>Motion Studio</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <h1>Motion Studio</h1>
+    </div>
+    <div class="topbar-actions">
+      <label class="model-select">
+        <span>Modell</span>
+        <select id="model">
+          <option value="opus">Opus – beste Qualität</option>
+          <option value="sonnet">Sonnet – schneller</option>
+        </select>
+      </label>
+      <button class="ghost" id="open-folder" type="button">Ordner öffnen</button>
+      <button class="ghost" id="new-project" type="button">Neues Gespräch</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="chat" aria-label="Gespräch mit Claude">
+      <div class="messages" id="messages" aria-live="polite">
+        <div class="welcome" id="welcome">
+          <h2>Was möchtest du heute erstellen?</h2>
+          <p>Beschreibe dein Video in eigenen Worten oder wähle unten eine Vorlage. Claude plant, rendert und prüft das Video. Fertige Videos erscheinen rechts.</p>
+        </div>
+      </div>
+
+      <div class="working" id="working" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="working-text">Claude arbeitet …</span>
+        <button class="danger small" id="stop" type="button">Abbrechen</button>
+      </div>
+
+      <form class="composer" id="composer">
+        <div class="templates" id="templates" aria-label="Vorlagen"></div>
+        <textarea id="prompt" rows="4" placeholder="Zum Beispiel: Erstelle ein 10-Sekunden-Intro für mein Café „Bohne & Blatt“ in warmen Farben …"></textarea>
+        <div class="composer-row">
+          <span class="hint">Strg/⌘ + Enter zum Senden</span>
+          <button class="primary" id="send" type="submit">Senden</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Deine Videos</h2>
+          <button class="ghost small" data-open="exports" type="button">Ordner</button>
+        </div>
+        <div class="gallery" id="videos">
+          <p class="empty">Noch keine Videos. Starte links mit einem Auftrag.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Eigene Dateien</h2>
+          <button class="ghost small" data-open="assets" type="button">Ordner</button>
+        </div>
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="file-input" multiple hidden>
+          <strong>Musik, Logos oder Bilder</strong>
+          <span>hierher ziehen oder klicken</span>
+        </label>
+        <ul class="assets" id="assets"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <div class="overlay" id="login" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <h2 id="login-title">Bei Claude anmelden</h2>
+      <p>Damit Claude für dich arbeiten kann, melde dich einmalig mit deinem Claude-Konto an. Dein Browser öffnet sich dafür.</p>
+      <p class="login-status" id="login-status"></p>
+      <a class="primary link-button" id="login-link" href="#" target="_blank" rel="noopener" hidden>Anmeldeseite öffnen</a>
+      <div class="login-code" id="login-code" hidden>
+        <label for="login-code-input">Code aus dem Browser einfügen:</label>
+        <div class="code-row">
+          <input id="login-code-input" autocomplete="off">
+          <button class="primary" id="login-code-send" type="button">Bestätigen</button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="primary" id="login-start" type="button">Jetzt anmelden</button>
+        <button class="ghost" id="login-check" type="button">Ich bin angemeldet</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

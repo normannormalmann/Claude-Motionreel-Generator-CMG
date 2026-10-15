@@ -75,32 +75,27 @@ When asked for your password, type it and press Enter. Nothing appears while you
 
 ## Your first video
 
-1. Double-click **"Motion Studio"** on your desktop.
-2. The first time, sign in to Claude by following the instructions in the window.
-3. Type `/model`, press Enter and choose **Opus** if it's offered.
-4. Paste a request into Claude and press Enter. For example:
+1. Double-click **"Motion Studio"** on your desktop. On a Mac you'll also find it in Finder under **Applications**. The studio opens in your browser.
+2. The first time, click **"Jetzt anmelden"** (sign in now) and sign in with your Claude account.
+3. Pick a template at the bottom, such as **"Showreel"**, or describe your video in your own words. Then click **"Senden"** (send). You can write in English.
+4. Claude plans, renders and checks the video. The left side shows what Claude is working on. Finished videos appear on the right and play right there.
+5. To make changes, just keep writing, for example "Make the second scene slower".
+
+Drag your own music, logos or images into the **"Eigene Dateien"** (your files) box on the right. **"Neues Gespräch"** (new conversation) starts a new project. Your videos are kept.
+
+> **Good to know:** So you don't have to confirm every step, Claude may create files and run commands (for example to render) on its own in the studio. Claude works in the studio folder, and the studio can only be reached from your own computer.
+
+The template buttons are in German. Here's an English request you can paste instead:
 
 ```
 Create a 15-second motion design showreel for a fictional design studio.
-Format: 1920 × 1080 pixels, 30 fps.
-Style: editorial, precise, large typography, cream background,
-black text and orange accents. Plan five scenes with different motion ideas.
-No audio for now.
-
-Read CLAUDE.md and check the available tools. Then create:
-1. The HTML animation with window.seek(timeInSeconds).
-2. A Python render script using Playwright.
-3. A 960 × 540 preview.
-4. A contact sheet of the preview.
-5. After at most two visual correction rounds, the full MP4 export.
-
-Actually inspect the rendered frames. Make sure text is readable and
-scene transitions are clean. Save the final video as exports/showreel.mp4.
+Format: 1920 × 1080 pixels, 30 fps. Style: editorial, precise, large typography,
+cream background, black text and orange accents. Plan five scenes with different
+motion ideas. No audio for now. Render a 960 × 540 preview and a contact sheet first,
+check the frames, then export the final video as exports/showreel.mp4.
 ```
 
-5. Claude plans, renders and checks the video. The finished video ends up in the **`exports`** folder.
-
-More examples (in German) are in **`BEISPIEL-PROMPTS.md`** in your studio folder.
+More example requests (in German) are in **`BEISPIEL-PROMPTS.md`** in your studio folder.
 
 **Where is my studio folder?**
 
@@ -114,7 +109,7 @@ Inside you'll find:
 
 - `exports`: your finished videos
 - `assets`: put your own music, logos or images here
-- `BEISPIEL-PROMPTS.md`: ready-made requests to copy
+- `BEISPIEL-PROMPTS.md`: more example requests
 - `CLAUDE.md`: Claude's working rules. You can edit them.
 
 ---
@@ -124,6 +119,7 @@ Inside you'll find:
 | Program | What it's for |
 |---|---|
 | **Claude Code** | The AI that plans and builds your videos |
+| **Motion Studio** | The browser interface you use to work with Claude |
 | **Python** with Playwright, Pillow and NumPy | Drives the rendering of individual frames |
 | **Chromium** (via Playwright) | An invisible browser that captures the animation frame by frame |
 | **FFmpeg** | Combines the frames into an MP4 file |
@@ -144,7 +140,8 @@ At the end, the installer renders a short test animation to confirm that everyth
 | Problem | Solution |
 |---|---|
 | The installation stops with "FEHLER" (error) | Just run it again. If that doesn't help, send the file `cmg-install.log` from your temp folder to support. The error message shows its path. |
-| `claude` is not found | Close the window and open "Motion Studio" again. Restarting your computer also helps. |
+| The studio doesn't open | Wait a few seconds and double-click "Motion Studio" again. Restarting your computer also helps. |
+| "Verbindung zum Studio unterbrochen" (connection lost) | The studio shuts down a few minutes after you close its browser tab. Just start it again via "Motion Studio". |
 | Windows: "winget ist nicht verfügbar" (winget not available) | Install **"App Installer"** from the Microsoft Store and run the installation again. |
 | Windows: Python is not found | Install Python 3.13 from [python.org](https://www.python.org/downloads/), tick **"Add python.exe to PATH"**, then run the installation again. |
 | The video shows blank or wrong frames | Ask Claude to check `window.seek()`, image and font loading, and the capture timing. |
@@ -157,5 +154,6 @@ At the end, the installer renders a short test animation to confirm that everyth
 
 - **Different studio folder:** set the environment variable `CMG_STUDIO_DIR` before installing.
 - **Install without prompts:** `CMG_NONINTERACTIVE=1`
-- **Start the studio without the desktop icon:** run `studio-starten.ps1` (Windows) or `studio-starten.sh` (Mac/Linux) in the studio folder.
+- **Use Claude Code directly in a terminal:** run `studio-im-terminal.ps1` (Windows) or `studio-im-terminal.sh` (Mac/Linux) in the studio folder.
+- **Studio app log:** `studio-app.log` in the app data folder (`%LOCALAPPDATA%\Claude-Motion-Studio` or `~/.local/share/claude-motion-studio`).
 - Every change is tested automatically on Windows, macOS and Ubuntu. See the **Actions** tab for the current status.

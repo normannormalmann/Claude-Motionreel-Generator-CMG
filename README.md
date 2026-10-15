@@ -73,11 +73,15 @@ Wenn du nach deinem Passwort gefragt wirst, gib es ein und drücke Enter. Beim T
 
 ## Dein erstes Video
 
-1. Doppelklicke auf **„Motion Studio“** auf deinem Schreibtisch bzw. Desktop.
-2. Beim ersten Start meldest du dich bei Claude an. Folge dazu den Anweisungen im Fenster.
-3. Tippe `/model`, drücke Enter und wähle **Opus**, falls es angeboten wird.
-4. Öffne im Studio-Ordner die Datei **`BEISPIEL-PROMPTS.md`**, kopiere den ersten Auftrag, füge ihn in Claude ein und drücke Enter.
-5. Claude plant, rendert und prüft das Video. Das fertige Video liegt danach im Ordner **`exports`**.
+1. Doppelklicke auf **„Motion Studio“** auf deinem Schreibtisch bzw. Desktop. Auf dem Mac findest du es auch im Finder unter **Programme**. Das Studio öffnet sich in deinem Browser.
+2. Beim ersten Start klickst du auf **„Jetzt anmelden“** und meldest dich mit deinem Claude-Konto an.
+3. Klicke unten auf eine Vorlage, z. B. **„Showreel“**, oder beschreibe dein Video in eigenen Worten. Klicke dann auf **„Senden“**.
+4. Claude plant, rendert und prüft das Video. Du siehst links, woran Claude gerade arbeitet. Fertige Videos erscheinen rechts und lassen sich direkt abspielen.
+5. Für Änderungen schreibst du einfach weiter, z. B. „Mach die zweite Szene langsamer“.
+
+Eigene Musik, Logos oder Bilder ziehst du rechts in das Feld **„Eigene Dateien“**. Mit **„Neues Gespräch“** beginnst du ein neues Projekt. Deine Videos bleiben dabei erhalten.
+
+> **Gut zu wissen:** Damit du nicht bei jedem Schritt etwas bestätigen musst, darf Claude im Studio selbstständig Dateien anlegen und Befehle ausführen, etwa zum Rendern. Claude arbeitet dabei im Studio-Ordner. Das Studio ist nur auf deinem eigenen Computer erreichbar.
 
 **Wo ist mein Studio-Ordner?**
 
@@ -91,7 +95,7 @@ Darin findest du:
 
 - `exports`: deine fertigen Videos
 - `assets`: hier legst du eigene Musik, Logos oder Bilder ab
-- `BEISPIEL-PROMPTS.md`: fertige Aufträge zum Kopieren
+- `BEISPIEL-PROMPTS.md`: weitere Beispiel-Aufträge
 - `CLAUDE.md`: die Arbeitsregeln für Claude. Du kannst sie anpassen.
 
 ---
@@ -101,6 +105,7 @@ Darin findest du:
 | Programm | Wofür |
 |---|---|
 | **Claude Code** | Die KI, die deine Videos plant und baut |
+| **Motion Studio** | Die Oberfläche im Browser, über die du mit Claude arbeitest |
 | **Python** mit Playwright, Pillow und NumPy | Steuert das Rendern der Einzelbilder |
 | **Chromium** (über Playwright) | Ein unsichtbarer Browser, der die Animation abfotografiert |
 | **FFmpeg** | Setzt die Einzelbilder zu einer MP4-Datei zusammen |
@@ -121,7 +126,8 @@ Am Ende rendert der Installer automatisch eine kurze Testanimation. So ist siche
 | Problem | Lösung |
 |---|---|
 | Die Installation bricht mit „FEHLER“ ab | Starte sie einfach noch einmal. Hilft das nicht, schicke die Datei `cmg-install.log` aus deinem Temp-Ordner an den Support. Den Pfad zeigt die Fehlermeldung an. |
-| `claude` wird nicht gefunden | Schließe das Fenster und öffne „Motion Studio“ erneut. Ein Neustart des Computers hilft ebenfalls. |
+| Das Studio öffnet sich nicht | Warte ein paar Sekunden und doppelklicke erneut auf „Motion Studio“. Ein Neustart des Computers hilft ebenfalls. |
+| „Verbindung zum Studio unterbrochen“ | Das Studio beendet sich einige Minuten, nachdem du den Browser-Tab geschlossen hast. Starte es einfach wieder über „Motion Studio“. |
 | Windows: „winget ist nicht verfügbar“ | Installiere im Microsoft Store die App **„App-Installer“** und starte die Installation erneut. |
 | Windows: Python wird nicht gefunden | Installiere Python 3.13 von [python.org](https://www.python.org/downloads/), setze dabei den Haken bei **„Add python.exe to PATH“** und starte die Installation erneut. |
 | Das Video zeigt leere oder falsche Bilder | Bitte Claude, `window.seek()`, das Laden der Bilder und Schriften und den Aufnahmezeitpunkt zu prüfen. |
@@ -134,5 +140,6 @@ Am Ende rendert der Installer automatisch eine kurze Testanimation. So ist siche
 
 - **Anderer Studio-Ordner:** Setze vor der Installation die Umgebungsvariable `CMG_STUDIO_DIR`.
 - **Ohne Rückfragen installieren:** `CMG_NONINTERACTIVE=1`
-- **Studio ohne Desktop-Symbol starten:** `studio-starten.ps1` (Windows) oder `studio-starten.sh` (Mac/Linux) im Studio-Ordner.
+- **Claude Code direkt in der Konsole:** `studio-im-terminal.ps1` (Windows) oder `studio-im-terminal.sh` (Mac/Linux) im Studio-Ordner.
+- **Protokoll der Studio-App:** `studio-app.log` im Programmdaten-Ordner (`%LOCALAPPDATA%\Claude-Motion-Studio` bzw. `~/.local/share/claude-motion-studio`).
 - Jede Änderung wird automatisch unter Windows, macOS und Ubuntu getestet. Den Stand siehst du unter **Actions**.

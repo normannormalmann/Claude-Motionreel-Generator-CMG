@@ -56,6 +56,28 @@ jobs:
           grep -n "Python:" "$studio/CLAUDE.md"
           echo "Studio-Ordner vollständig."
 
+      - name: Studio-App und Startsymbole prüfen
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            data="$LOCALAPPDATA/Claude-Motion-Studio"
+            py="$data/venv/Scripts/python.exe"
+            test -f "$USERPROFILE/Desktop/Motion Studio.lnk" || { echo "Desktop-Verknüpfung fehlt"; exit 1; }
+            test -f "$data/venv/Scripts/pythonw.exe" || { echo "pythonw.exe fehlt"; exit 1; }
+          else
+            data="$HOME/.local/share/claude-motion-studio"
+            py="$data/venv/bin/python"
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              test -x "$HOME/Applications/Motion Studio.app/Contents/MacOS/motion-studio" || { echo "Mac-App fehlt"; exit 1; }
+            else
+              test -f "$HOME/.local/share/applications/motion-studio.desktop" || { echo "Menüeintrag fehlt"; exit 1; }
+            fi
+          fi
+          for f in studio_app.py claude_bridge.py platform_support.py static/index.html static/app.js icon.png config.json; do
+            test -f "$data/app/$f" || test -f "$data/$f" || { echo "Fehlt: $f"; exit 1; }
+          done
+          "$py" -m unittest discover -s tests -v
+
       - name: Protokoll hochladen
         if: always()
         uses: actions/upload-artifact@v4
