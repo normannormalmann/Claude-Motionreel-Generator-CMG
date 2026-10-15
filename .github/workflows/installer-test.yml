@@ -1,0 +1,83 @@
+name: Installer-Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lokal:
+    name: Installer aus dem Repo (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CMG_NONINTERACTIVE: '1'
+      CMG_LOG_FILE: ${{ github.workspace }}/cmg-install.log
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer ausführen (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+
+      - name: Installer erneut ausführen – darf nichts kaputt machen (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+
+      - name: Installer ausführen (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: bash ./install.sh
+
+      - name: Installer erneut ausführen – darf nichts kaputt machen (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: bash ./install.sh
+
+      - name: Studio-Ordner prüfen
+        shell: bash
+        run: |
+          studio="$HOME/Projects/motion-studio"
+          [ "$RUNNER_OS" = "Windows" ] && studio="$USERPROFILE/Projects/motion-studio"
+          for f in CLAUDE.md BEISPIEL-PROMPTS.md tools/selbsttest.py exports assets; do
+            test -e "$studio/$f" || { echo "Fehlt: $f"; exit 1; }
+          done
+          if grep -q '{{' "$studio/CLAUDE.md"; then echo "Platzhalter nicht ersetzt"; exit 1; fi
+          echo "Studio-Ordner vollständig."
+
+      - name: Protokoll hochladen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protokoll-${{ matrix.os }}
+          path: ${{ github.workspace }}/cmg-install.log
+          if-no-files-found: ignore
+
+  ferninstallation:
+    name: Ein-Zeilen-Installation (${{ matrix.os }})
+    # Funktioniert nur, wenn das Repository öffentlich ist.
+    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CMG_NONINTERACTIVE: '1'
+    steps:
+      - name: Ein-Zeilen-Befehl (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 -OutFile "$env:TEMP\cmg.ps1"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\cmg.ps1"
+          exit $LASTEXITCODE
+
+      - name: Ein-Zeilen-Befehl (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
