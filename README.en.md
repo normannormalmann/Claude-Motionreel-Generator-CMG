@@ -1,3 +1,5 @@
+<img src="docs/images/icon.png" alt="" width="72" align="right">
+
 # Claude Motionreel Generator (CMG)
 
 🇩🇪 [Deutsche Version](README.md)
@@ -8,7 +10,14 @@ You describe the video you want in plain words. Claude turns that into an animat
 
 This package installs everything you need for that. You don't need any technical knowledge.
 
-> **Note:** The installer messages and the example prompts are in German. Claude understands English just as well, so you can write all your requests in English.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/studio-dunkel.png">
+  <img src="docs/images/studio-hell.png" alt="Motion Studio: chat with Claude on the left, the finished video and preview frames on the right" width="100%">
+</picture>
+
+<sub>Motion Studio in the browser: your request and Claude's work steps on the left, the finished video on the right.</sub>
+
+> **Note:** The installer, the studio interface and the example prompts are in German. Claude understands English just as well, so you can write all your requests in English.
 
 ---
 
@@ -80,6 +89,10 @@ When asked for your password, type it and press Enter. Nothing appears while you
 3. Pick a template at the bottom, such as **"Showreel"**, or describe your video in your own words. Then click **"Senden"** (send). You can write in English.
 4. Claude plans, renders and checks the video. The left side shows what Claude is working on. Finished videos appear on the right and play right there.
 5. To make changes, just keep writing, for example "Make the second scene slower".
+
+<img src="docs/images/anmeldung.png" alt="Sign-in dialog in Motion Studio" width="640">
+
+<sub>The first time, you sign in to Claude right inside the studio.</sub>
 
 Drag your own music, logos or images into the **"Eigene Dateien"** (your files) box on the right. **"Neues Gespräch"** (new conversation) starts a new project. Your videos are kept.
 

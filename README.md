@@ -1,3 +1,5 @@
+<img src="docs/images/icon.png" alt="" width="72" align="right">
+
 # Claude Motionreel Generator (CMG)
 
 🇬🇧 [English version](README.en.md)
@@ -7,6 +9,13 @@
 Du beschreibst Claude in normalen Worten, welches Video du möchtest. Claude baut daraus eine Animation, prüft die Einzelbilder und speichert das fertige Video als MP4-Datei.
 
 Dieses Paket installiert alles, was dafür nötig ist. Technische Vorkenntnisse brauchst du nicht.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/studio-dunkel.png">
+  <img src="docs/images/studio-hell.png" alt="Das Motion Studio: links der Chat mit Claude, rechts das fertige Video und Vorschaubilder" width="100%">
+</picture>
+
+<sub>Das Motion Studio im Browser: links der Auftrag und Claudes Arbeitsschritte, rechts das fertige Video.</sub>
 
 ---
 
@@ -78,6 +87,10 @@ Wenn du nach deinem Passwort gefragt wirst, gib es ein und drücke Enter. Beim T
 3. Klicke unten auf eine Vorlage, z. B. **„Showreel“**, oder beschreibe dein Video in eigenen Worten. Klicke dann auf **„Senden“**.
 4. Claude plant, rendert und prüft das Video. Du siehst links, woran Claude gerade arbeitet. Fertige Videos erscheinen rechts und lassen sich direkt abspielen.
 5. Für Änderungen schreibst du einfach weiter, z. B. „Mach die zweite Szene langsamer“.
+
+<img src="docs/images/anmeldung.png" alt="Anmeldefenster im Motion Studio" width="640">
+
+<sub>Beim ersten Start meldest du dich direkt im Studio bei Claude an.</sub>
 
 Eigene Musik, Logos oder Bilder ziehst du rechts in das Feld **„Eigene Dateien“**. Mit **„Neues Gespräch“** beginnst du ein neues Projekt. Deine Videos bleiben dabei erhalten.
 
