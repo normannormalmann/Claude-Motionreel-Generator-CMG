@@ -2,11 +2,15 @@
 
 Startet einen kleinen Webserver auf 127.0.0.1 und öffnet ihn im Browser.
 Nur die Python-Standardbibliothek wird benötigt.
+
+Zugriffsschutz: Der Starter öffnet den Browser mit einer geheimen Startkennung
+(/?k=...). Diese wird gegen ein HttpOnly-Cookie getauscht. Ohne Cookie gibt es
+keinen Zugriff – auch nicht für andere Programme oder Benutzer auf dem Rechner.
 """
 
 import json
 import logging
-import re
+import os
 import secrets
 import sys
 import threading
@@ -14,43 +18,45 @@ import time
 import urllib.request
 import webbrowser
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import media_files as media  # noqa: E402
 import platform_support as ps  # noqa: E402
 from claude_bridge import BusyError, ClaudeMissingError, StudioBridge  # noqa: E402
 
-PREFERRED_PORT = 47615
 IDLE_SHUTDOWN_SECONDS = 180
 STARTUP_GRACE_SECONDS = 90
 LONG_POLL_SECONDS = 20
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 MAX_JSON_BYTES = 200 * 1024
-CHUNK_SIZE = 64 * 1024
-MAX_MEDIA_FILES = 80
+COOKIE_NAME = "motion_studio"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {"app.css": "text/css", "app.js": "text/javascript"}
-MEDIA_TYPES = {
-    ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
-    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac",
-    ".svg": "image/svg+xml", ".ttf": "font/ttf", ".otf": "font/otf", ".woff2": "font/woff2",
-}
-MEDIA_ROOTS = ("exports", "assets")
-SAFE_NAME = re.compile(r"[^\w.\- ]")
+PAGE_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+MEDIA_CSP = "sandbox; default-src 'none'"
+LOCKED_PAGE = (
+    "<!doctype html><meta charset='utf-8'><title>Motion Studio</title>"
+    "<body style='font-family:system-ui;max-width:32rem;margin:15vh auto;padding:0 16px'>"
+    "<h1>Motion Studio</h1><p>Bitte öffne das Studio über das Symbol <strong>„Motion Studio“</strong> "
+    "auf deinem Desktop bzw. Schreibtisch.</p></body>"
+)
 
 
 class StudioServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, bridge, studio_dir, token):
+    def __init__(self, address, bridge, studio_dir):
         super().__init__(address, StudioHandler)
         self.bridge = bridge
         self.studio_dir = Path(studio_dir)
-        self.token = token
+        self.launch_key = secrets.token_urlsafe(32)
+        self.session_token = secrets.token_urlsafe(32)
         self.last_seen = time.time() + STARTUP_GRACE_SECONDS
 
     @property
@@ -58,32 +64,13 @@ class StudioServer(ThreadingHTTPServer):
         port = self.server_address[1]
         return {"127.0.0.1:{}".format(port), "localhost:{}".format(port)}
 
-
-def list_media(studio_dir, root):
-    base = studio_dir / root
-    if not base.is_dir():
-        return []
-    files = [p for p in base.rglob("*") if p.is_file() and p.suffix.lower() in MEDIA_TYPES]
-    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    result = []
-    for path in files[:MAX_MEDIA_FILES]:
-        relative = path.relative_to(base).as_posix()
-        stat = path.stat()
-        result.append({
-            "name": relative,
-            "url": "/media/{}/{}".format(root, quote(relative)),
-            "type": MEDIA_TYPES[path.suffix.lower()].split("/")[0],
-            "size": stat.st_size,
-            "modified": stat.st_mtime,
-        })
-    return result
+    @property
+    def launch_url(self):
+        return "http://127.0.0.1:{}/?k={}".format(self.server_address[1], self.launch_key)
 
 
-def safe_upload_name(raw_name):
-    name = SAFE_NAME.sub("_", Path(unquote(raw_name or "")).name).strip()
-    if not name or name.startswith("."):
-        return None
-    return name[:120]
+def tokens_match(supplied, expected):
+    return secrets.compare_digest((supplied or "").encode("utf-8"), expected.encode("utf-8"))
 
 
 class StudioHandler(BaseHTTPRequestHandler):
@@ -94,26 +81,29 @@ class StudioHandler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ Antworten
 
-    def _send_json(self, data, status=HTTPStatus.OK):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
+    def _security_headers(self, csp=PAGE_CSP):
+        self.send_header("Content-Security-Policy", csp)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-store")
+
+    def _send_bytes(self, body, content_type, status=HTTPStatus.OK, extra_headers=None):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self._security_headers()
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_json(self, data, status=HTTPStatus.OK):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self._send_bytes(body, "application/json; charset=utf-8", status)
 
     def _send_error(self, status, message):
         self._send_json({"error": message}, status)
-
-    def _send_bytes(self, body, content_type):
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(body)
 
     def _read_json(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -128,15 +118,21 @@ class StudioHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------ Sicherheit
 
     def _is_trusted_origin(self):
-        """Schützt vor fremden Webseiten (DNS-Rebinding, Cross-Site-Anfragen)."""
+        """Wehrt fremde Webseiten ab (DNS-Rebinding, Cross-Site-Anfragen, Einbetten)."""
         if self.headers.get("Host") not in self.server.allowed_hosts:
+            return False
+        if self.headers.get("Sec-Fetch-Site") == "cross-site":
             return False
         origin = self.headers.get("Origin")
         return origin is None or origin.replace("http://", "", 1) in self.server.allowed_hosts
 
-    def _has_token(self, query):
-        supplied = self.headers.get("X-Studio-Token") or (query.get("t") or [""])[0]
-        return secrets.compare_digest(supplied, self.server.token)
+    def _has_session(self):
+        try:
+            cookie = SimpleCookie(self.headers.get("Cookie") or "")
+        except CookieError:
+            return False
+        morsel = cookie.get(COOKIE_NAME)
+        return morsel is not None and tokens_match(morsel.value, self.server.session_token)
 
     # ------------------------------------------------------------ Routing
 
@@ -148,14 +144,13 @@ class StudioHandler(BaseHTTPRequestHandler):
         if url.path == "/api/hello":
             return self._send_json({"app": "motion-studio"})
         if url.path == "/":
-            html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace("__TOKEN__", self.server.token)
-            return self._send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
+            return self._serve_index(query)
         if url.path.startswith("/static/"):
             name = url.path[len("/static/"):]
             if name in STATIC_FILES:
                 return self._send_bytes((STATIC_DIR / name).read_bytes(), STATIC_FILES[name] + "; charset=utf-8")
             return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
-        if not self._has_token(query):
+        if not self._has_session():
             return self._send_error(HTTPStatus.FORBIDDEN, "Zugriff verweigert")
         self.server.last_seen = time.time()
         if url.path.startswith("/media/"):
@@ -164,7 +159,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             "/api/state": lambda: self._state(query),
             "/api/auth": lambda: self._send_json(self.server.bridge.auth_status(force="force" in query)),
             "/api/files": lambda: self._send_json({
-                root: list_media(self.server.studio_dir, root) for root in MEDIA_ROOTS
+                root: media.list_media(self.server.studio_dir, root) for root in media.MEDIA_ROOTS
             }),
             "/api/login": lambda: self._send_json(self.server.bridge.login_snapshot()),
         }
@@ -175,43 +170,52 @@ class StudioHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
-        if not self._is_trusted_origin() or not self._has_token({}):
+        # Der eigene Kopf-Eintrag erzwingt bei fremden Seiten eine CORS-Vorabprüfung, die wir nie erlauben.
+        if not (self._is_trusted_origin() and self._has_session() and self.headers.get("X-Studio-Request") == "1"):
             return self._send_error(HTTPStatus.FORBIDDEN, "Zugriff verweigert")
         self.server.last_seen = time.time()
-        bridge = self.server.bridge
         try:
-            if url.path == "/api/chat":
-                data = self._read_json()
-                message = str(data.get("message", "")).strip()
-                if not message:
-                    return self._send_error(HTTPStatus.BAD_REQUEST, "Bitte einen Auftrag eingeben.")
-                bridge.start_chat(message, str(data.get("model", "")))
-                return self._send_json({"ok": True})
-            if url.path == "/api/stop":
-                bridge.stop()
-                return self._send_json({"ok": True})
-            if url.path == "/api/reset":
-                bridge.reset()
-                return self._send_json({"ok": True})
-            if url.path == "/api/upload":
-                return self._upload()
-            if url.path == "/api/open":
-                return self._open_folder(self._read_json().get("target"))
-            if url.path == "/api/login":
-                bridge.start_login()
-                return self._send_json({"ok": True})
-            if url.path == "/api/login/code":
-                bridge.send_login_code(str(self._read_json().get("code", "")))
-                return self._send_json({"ok": True})
-            if url.path == "/api/ping":
-                return self._send_json({"ok": True})
+            return self._dispatch_post(url.path)
         except BusyError:
             return self._send_error(HTTPStatus.CONFLICT, "Claude arbeitet gerade noch. Bitte warten oder abbrechen.")
         except ClaudeMissingError:
             return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.")
-        return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
+
+    def _dispatch_post(self, path):
+        bridge = self.server.bridge
+        if path == "/api/chat":
+            data = self._read_json()
+            message = str(data.get("message", "")).strip()
+            if not message:
+                return self._send_error(HTTPStatus.BAD_REQUEST, "Bitte einen Auftrag eingeben.")
+            bridge.start_chat(message, str(data.get("model", "")))
+        elif path == "/api/stop":
+            bridge.stop()
+        elif path == "/api/reset":
+            bridge.reset()
+        elif path == "/api/upload":
+            return self._upload()
+        elif path == "/api/open":
+            self._open_folder(self._read_json().get("target"))
+        elif path == "/api/login":
+            bridge.start_login()
+        elif path == "/api/login/code":
+            bridge.send_login_code(str(self._read_json().get("code", "")))
+        elif path != "/api/ping":
+            return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
+        return self._send_json({"ok": True})
 
     # ------------------------------------------------------------ Endpunkte
+
+    def _serve_index(self, query):
+        supplied_key = (query.get("k") or [""])[0]
+        if supplied_key and tokens_match(supplied_key, self.server.launch_key):
+            cookie = "{}={}; HttpOnly; SameSite=Strict; Path=/".format(COOKIE_NAME, self.server.session_token)
+            return self._send_bytes(b"", "text/plain", HTTPStatus.SEE_OTHER, {"Location": "/", "Set-Cookie": cookie})
+        if not self._has_session():
+            return self._send_bytes(LOCKED_PAGE.encode("utf-8"), "text/html; charset=utf-8", HTTPStatus.FORBIDDEN)
+        self.server.last_seen = time.time()
+        return self._send_bytes((STATIC_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
 
     def _state(self, query):
         try:
@@ -225,72 +229,44 @@ class StudioHandler(BaseHTTPRequestHandler):
 
     def _open_folder(self, target):
         folder = self.server.studio_dir
-        if target in MEDIA_ROOTS:
+        if target in media.MEDIA_ROOTS:
             folder = folder / target
         folder.mkdir(parents=True, exist_ok=True)
         ps.open_in_file_manager(folder)
-        return self._send_json({"ok": True})
 
     def _upload(self):
-        name = safe_upload_name(self.headers.get("X-Filename"))
+        name = media.safe_upload_name(self.headers.get("X-Filename"))
         length = int(self.headers.get("Content-Length") or 0)
-        if not name or Path(name).suffix.lower() not in MEDIA_TYPES:
+        if not name or Path(name).suffix.lower() not in media.MEDIA_TYPES:
             return self._send_error(HTTPStatus.BAD_REQUEST, "Dieser Dateityp wird nicht unterstützt.")
         if length <= 0 or length > MAX_UPLOAD_BYTES:
             return self._send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Die Datei ist zu groß (max. 500 MB).")
         target_dir = self.server.studio_dir / "assets"
         target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / name
-        remaining = length
-        with open(target, "wb") as handle:
-            while remaining > 0:
-                chunk = self.rfile.read(min(CHUNK_SIZE, remaining))
-                if not chunk:
-                    break
-                handle.write(chunk)
-                remaining -= len(chunk)
+        try:
+            media.save_upload(self.rfile, length, target_dir / name)
+        except media.UploadError:
+            return self._send_error(HTTPStatus.BAD_REQUEST, "Der Upload wurde unterbrochen. Bitte erneut versuchen.")
         return self._send_json({"ok": True, "name": name})
 
-    def _resolve_media(self, path):
-        parts = path.split("/", 3)  # ["", "media", root, rest]
-        if len(parts) != 4 or parts[2] not in MEDIA_ROOTS:
-            return None
-        base = (self.server.studio_dir / parts[2]).resolve()
-        candidate = (base / unquote(parts[3])).resolve()
-        try:
-            candidate.relative_to(base)
-        except ValueError:
-            return None
-        if not candidate.is_file() or candidate.suffix.lower() not in MEDIA_TYPES:
-            return None
-        return candidate
-
     def _send_media(self, path):
-        file_path = self._resolve_media(path)
+        file_path = media.resolve_media(self.server.studio_dir, path)
         if file_path is None:
             return self._send_error(HTTPStatus.NOT_FOUND, "Datei nicht gefunden")
         size = file_path.stat().st_size
-        start, end = 0, size - 1
-        status = HTTPStatus.OK
-        match = re.match(r"bytes=(\d*)-(\d*)$", self.headers.get("Range", ""))
-        if match and (match.group(1) or match.group(2)):
-            if match.group(1):
-                start = int(match.group(1))
-                end = min(int(match.group(2)), size - 1) if match.group(2) else size - 1
-            else:
-                start = max(0, size - int(match.group(2)))
-            if start > end:
-                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
-                self.send_header("Content-Range", "bytes */{}".format(size))
-                self.end_headers()
-                return None
-            status = HTTPStatus.PARTIAL_CONTENT
-        self.send_response(status)
-        self.send_header("Content-Type", MEDIA_TYPES[file_path.suffix.lower()])
+        byte_range = media.parse_range(self.headers.get("Range"), size)
+        if byte_range is None:
+            self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+            self.send_header("Content-Range", "bytes */{}".format(size))
+            self.end_headers()
+            return None
+        start, end, partial = byte_range
+        self.send_response(HTTPStatus.PARTIAL_CONTENT if partial else HTTPStatus.OK)
+        self.send_header("Content-Type", media.MEDIA_TYPES[file_path.suffix.lower()])
         self.send_header("Content-Length", str(end - start + 1))
         self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Cache-Control", "no-store")
-        if status == HTTPStatus.PARTIAL_CONTENT:
+        self._security_headers(MEDIA_CSP)
+        if partial:
             self.send_header("Content-Range", "bytes {}-{}/{}".format(start, end, size))
         self.end_headers()
         try:
@@ -298,7 +274,7 @@ class StudioHandler(BaseHTTPRequestHandler):
                 handle.seek(start)
                 remaining = end - start + 1
                 while remaining > 0:
-                    chunk = handle.read(min(CHUNK_SIZE, remaining))
+                    chunk = handle.read(min(media.CHUNK_SIZE, remaining))
                     if not chunk:
                         break
                     self.wfile.write(chunk)
@@ -311,26 +287,30 @@ class StudioHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------- Start
 
 
+def write_private_json(path, data):
+    """Schreibt eine Datei, die nur der eigene Benutzer lesen darf."""
+    path.write_text(json.dumps(data), encoding="utf-8")
+    if not ps.IS_WINDOWS:
+        os.chmod(path, 0o600)
+
+
 def running_instance_url(info_file):
-    """Läuft das Studio schon? Dann dessen Adresse zurückgeben."""
+    """Läuft das Studio schon? Dann dessen Startadresse (mit Startkennung) zurückgeben."""
     try:
-        port = json.loads(info_file.read_text(encoding="utf-8"))["port"]
-        url = "http://127.0.0.1:{}/".format(port)
-        with urllib.request.urlopen(url + "api/hello", timeout=2) as response:
+        info = json.loads(info_file.read_text(encoding="utf-8"))
+        base = "http://127.0.0.1:{}/".format(int(info["port"]))
+        with urllib.request.urlopen(base + "api/hello", timeout=2) as response:
             if json.loads(response.read().decode("utf-8")).get("app") == "motion-studio":
-                return url
-    except (OSError, ValueError, KeyError):
+                return "{}?k={}".format(base, info["key"])
+    except (OSError, ValueError, KeyError, TypeError):
         pass
     return None
 
 
-def create_server(studio_dir, data_dir, port=PREFERRED_PORT):
+def create_server(studio_dir, data_dir, port=0):
+    """Port 0 = zufälliger freier Port; so kann kein anderes Programm ihn vorab belegen."""
     bridge = StudioBridge(studio_dir, data_dir)
-    token = secrets.token_urlsafe(24)
-    try:
-        return StudioServer(("127.0.0.1", port), bridge, studio_dir, token)
-    except OSError:
-        return StudioServer(("127.0.0.1", 0), bridge, studio_dir, token)
+    return StudioServer(("127.0.0.1", port), bridge, studio_dir)
 
 
 def watch_idle(server):
@@ -357,22 +337,24 @@ def main():
         return 0
 
     studio = ps.studio_dir()
-    for folder in ("exports", "assets"):
+    for folder in media.MEDIA_ROOTS:
         (studio / folder).mkdir(parents=True, exist_ok=True)
     server = create_server(studio, data_dir)
-    port = server.server_address[1]
-    info_file.write_text(json.dumps({"port": port}), encoding="utf-8")
-    url = "http://127.0.0.1:{}/".format(port)
-    logging.info("Motion Studio läuft unter %s (Studio-Ordner: %s)", url, studio)
-    print("Motion Studio läuft unter {} – dieses Fenster kann offen bleiben.".format(url))
+    write_private_json(info_file, {"port": server.server_address[1], "key": server.launch_key})
+    logging.info("Motion Studio läuft auf Port %s (Studio-Ordner: %s)", server.server_address[1], studio)
+    print("Motion Studio läuft – dieses Fenster kann offen bleiben.")
 
     if "--no-browser" not in sys.argv:
-        threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+        threading.Timer(0.5, webbrowser.open, args=(server.launch_url,)).start()
     threading.Thread(target=watch_idle, args=(server,), daemon=True).start()
     try:
         server.serve_forever()
     finally:
         server.server_close()
+        try:
+            info_file.unlink()
+        except OSError:
+            pass
     return 0
 
 

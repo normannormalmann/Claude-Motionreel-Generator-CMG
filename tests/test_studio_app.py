@@ -1,9 +1,10 @@
-"""Tests für die Studio-App: Logik, HTTP-Schnittstelle und Oberfläche im Browser.
+"""Tests für die Studio-App: Logik, HTTP-Schnittstelle, Sicherheit und Oberfläche im Browser.
 
 Aufruf:  <venv-python> -m unittest discover -s tests -v
 """
 
 import http.client
+import io
 import json
 import os
 import sys
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "studio-app"))
 os.environ["CMG_CLAUDE_BIN"] = str(ROOT / "tests" / "fake_claude.py")
 
+import media_files  # noqa: E402
 import studio_app  # noqa: E402
 from claude_bridge import describe_tool  # noqa: E402
 
@@ -31,11 +33,32 @@ class HelperTests(unittest.TestCase):
                          "Führt aus: Video kodieren")
         self.assertEqual(describe_tool("Bash", {"command": ""})[0], "Führt aus: Befehl")
 
-    def test_safe_upload_name_strips_paths_and_hidden_files(self):
-        self.assertEqual(studio_app.safe_upload_name("..%2F..%2Fmusic.mp3"), "music.mp3")
-        self.assertEqual(studio_app.safe_upload_name("Mein Song!.mp3"), "Mein Song_.mp3")
-        self.assertIsNone(studio_app.safe_upload_name(".bashrc"))
-        self.assertIsNone(studio_app.safe_upload_name(""))
+    def test_safe_upload_name_strips_paths_hidden_files_and_devices(self):
+        self.assertEqual(media_files.safe_upload_name("..%2F..%2Fmusic.mp3"), "music.mp3")
+        self.assertEqual(media_files.safe_upload_name("Mein Song!.mp3"), "Mein Song_.mp3")
+        self.assertIsNone(media_files.safe_upload_name(".bashrc"))
+        self.assertIsNone(media_files.safe_upload_name(""))
+        self.assertIsNone(media_files.safe_upload_name("CON.mp3"))
+        self.assertIsNone(media_files.safe_upload_name("nul.png"))
+
+    def test_parse_range(self):
+        self.assertEqual(media_files.parse_range("bytes=10-19", 100), (10, 19, True))
+        self.assertEqual(media_files.parse_range("bytes=-10", 100), (90, 99, True))
+        self.assertEqual(media_files.parse_range(None, 100), (0, 99, False))
+        self.assertIsNone(media_files.parse_range("bytes=200-", 100))
+
+    def test_interrupted_upload_keeps_existing_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            target = Path(temp) / "song.mp3"
+            target.write_bytes(b"alt")
+            with self.assertRaises(media_files.UploadError):
+                media_files.save_upload(io.BytesIO(b"neu"), 10, target)
+            self.assertEqual(target.read_bytes(), b"alt")
+            self.assertEqual(sorted(p.name for p in Path(temp).iterdir()), ["song.mp3"])
+
+    def test_svg_is_not_served(self):
+        self.assertNotIn(".svg", media_files.MEDIA_TYPES)
+        self.assertNotIn(".html", media_files.MEDIA_TYPES)
 
 
 class ServerTestCase(unittest.TestCase):
@@ -46,9 +69,9 @@ class ServerTestCase(unittest.TestCase):
         self.data = base / "data"
         for folder in (self.studio / "exports", self.studio / "assets", self.data):
             folder.mkdir(parents=True)
-        self.server = studio_app.create_server(self.studio, self.data, port=0)
+        self.server = studio_app.create_server(self.studio, self.data)
         self.port = self.server.server_address[1]
-        self.token = self.server.token
+        self.cookie = "{}={}".format(studio_app.COOKIE_NAME, self.server.session_token)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def tearDown(self):
@@ -57,11 +80,11 @@ class ServerTestCase(unittest.TestCase):
         self.server.server_close()
         self.temp.cleanup()
 
-    def request(self, method, path, body=None, headers=None, token=True):
+    def request(self, method, path, body=None, headers=None, session=True):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
         all_headers = {"Host": "127.0.0.1:{}".format(self.port)}
-        if token:
-            all_headers["X-Studio-Token"] = self.token
+        if session:
+            all_headers.update({"Cookie": self.cookie, "X-Studio-Request": "1"})
         all_headers.update(headers or {})
         if isinstance(body, dict):
             body = json.dumps(body).encode("utf-8")
@@ -75,7 +98,7 @@ class ServerTestCase(unittest.TestCase):
     def wait_until_idle(self):
         deadline = time.time() + WAIT_SECONDS
         while time.time() < deadline:
-            status, data, _ = self.request("GET", "/api/state?from=0")
+            _, data, _ = self.request("GET", "/api/state?from=0")
             state = json.loads(data)
             if not state["busy"]:
                 return state["items"]
@@ -85,31 +108,69 @@ class ServerTestCase(unittest.TestCase):
 
 class SecurityTests(ServerTestCase):
     def test_hello_is_public(self):
-        status, data, _ = self.request("GET", "/api/hello", token=False)
+        status, data, _ = self.request("GET", "/api/hello", session=False)
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data)["app"], "motion-studio")
 
-    def test_api_requires_token(self):
-        status, _, _ = self.request("GET", "/api/state", token=False)
+    def test_index_without_launch_key_reveals_nothing(self):
+        status, data, _ = self.request("GET", "/", session=False)
+        self.assertEqual(status, 403)
+        self.assertNotIn(self.server.session_token.encode(), data)
+        self.assertNotIn(self.server.launch_key.encode(), data)
+
+    def test_launch_key_is_exchanged_for_httponly_cookie(self):
+        status, _, response = self.request("GET", "/?k=" + self.server.launch_key, session=False)
+        self.assertEqual(status, 303)
+        cookie = response.getheader("Set-Cookie")
+        self.assertIn(self.server.session_token, cookie)
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+
+    def test_wrong_launch_key_is_rejected(self):
+        status, _, response = self.request("GET", "/?k=falsch", session=False)
+        self.assertEqual(status, 403)
+        self.assertIsNone(response.getheader("Set-Cookie"))
+
+    def test_api_requires_session_cookie(self):
+        status, _, _ = self.request("GET", "/api/state", session=False)
+        self.assertEqual(status, 403)
+        status, _, _ = self.request("GET", "/api/state", headers={"Cookie": "motion_studio=falsch"}, session=False)
         self.assertEqual(status, 403)
 
-    def test_foreign_host_is_rejected(self):
+    def test_post_requires_custom_header(self):
+        status, _, _ = self.request("POST", "/api/ping", body={}, session=False, headers={"Cookie": self.cookie})
+        self.assertEqual(status, 403)
+
+    def test_non_ascii_cookie_does_not_crash(self):
+        status, _, _ = self.request("GET", "/api/state", session=False,
+                                    headers={"Cookie": "motion_studio=äöü".encode("utf-8").decode("latin-1")})
+        self.assertEqual(status, 403)
+
+    def test_foreign_host_origin_and_cross_site_are_rejected(self):
         status, _, _ = self.request("GET", "/api/state", headers={"Host": "evil.example:{}".format(self.port)})
         self.assertEqual(status, 403)
-
-    def test_foreign_origin_is_rejected(self):
         status, _, _ = self.request("POST", "/api/ping", body={}, headers={"Origin": "https://evil.example"})
         self.assertEqual(status, 403)
+        status, _, _ = self.request("GET", "/api/state", headers={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(status, 403)
 
-    def test_media_path_traversal_is_rejected(self):
+    def test_pages_send_security_headers(self):
+        _, _, response = self.request("GET", "/")
+        self.assertIn("frame-ancestors 'none'", response.getheader("Content-Security-Policy"))
+        self.assertEqual(response.getheader("X-Frame-Options"), "DENY")
+        self.assertEqual(response.getheader("Referrer-Policy"), "no-referrer")
+
+    def test_media_is_sandboxed_and_traversal_rejected(self):
+        (self.studio / "exports" / "a.png").write_bytes(b"x")
+        _, _, response = self.request("GET", "/media/exports/a.png")
+        self.assertTrue(response.getheader("Content-Security-Policy").startswith("sandbox"))
         (self.studio / "secret.mp4").write_bytes(b"x")
         status, _, _ = self.request("GET", "/media/exports/..%2Fsecret.mp4")
         self.assertEqual(status, 404)
 
-    def test_index_contains_token(self):
-        status, data, _ = self.request("GET", "/", token=False)
-        self.assertEqual(status, 200)
-        self.assertIn(self.token.encode(), data)
+    def test_svg_upload_is_rejected(self):
+        status, _, _ = self.request("POST", "/api/upload", body=b"<svg/>", headers={"X-Filename": "bild.svg"})
+        self.assertEqual(status, 400)
 
 
 class ChatTests(ServerTestCase):
@@ -117,8 +178,7 @@ class ChatTests(ServerTestCase):
         status, _, _ = self.request("POST", "/api/chat", body={"message": "Hallo Studio", "model": "sonnet"})
         self.assertEqual(status, 200)
         items = self.wait_until_idle()
-        kinds = [item["kind"] for item in items]
-        self.assertEqual(kinds, ["user", "assistant", "tool", "done"])
+        self.assertEqual([item["kind"] for item in items], ["user", "assistant", "tool", "done"])
         self.assertIn("resume=nein", items[1]["text"])
         self.assertEqual(items[2]["text"], "Erstellt fake.mp4")
 
@@ -146,7 +206,7 @@ class ChatTests(ServerTestCase):
         self.request("POST", "/api/chat", body={"message": "Hallo"})
         self.wait_until_idle()
         self.request("POST", "/api/reset", body={})
-        status, data, _ = self.request("GET", "/api/state?from=0")
+        _, data, _ = self.request("GET", "/api/state?from=0")
         self.assertEqual(json.loads(data)["items"], [])
 
 
@@ -180,7 +240,7 @@ class FileTests(ServerTestCase):
 class BrowserTests(ServerTestCase):
     """Bedient die Oberfläche wie ein Mensch (übersprungen, falls Playwright fehlt)."""
 
-    def test_template_send_shows_answer_and_video(self):
+    def test_launch_template_send_shows_answer_and_video(self):
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
@@ -189,7 +249,8 @@ class BrowserTests(ServerTestCase):
             browser = p.chromium.launch()
             try:
                 page = browser.new_page()
-                page.goto("http://127.0.0.1:{}/".format(self.port))
+                page.goto(self.server.launch_url)
+                self.assertTrue(page.url.endswith("/"), "Startkennung muss aus der Adresse verschwinden")
                 page.get_by_role("button", name="Showreel").click()
                 self.assertIn("Showreel", page.locator("#prompt").input_value())
                 page.get_by_role("button", name="Senden").click()
@@ -197,6 +258,8 @@ class BrowserTests(ServerTestCase):
                 self.assertIn("Verstanden", page.locator(".msg-assistant").first.inner_text())
                 page.locator(".media-card video").first.wait_for(timeout=WAIT_SECONDS * 1000)
                 self.assertTrue(page.locator("#login").is_hidden())
+                page.reload()
+                page.locator(".msg-assistant").first.wait_for(timeout=WAIT_SECONDS * 1000)
             finally:
                 browser.close()
 

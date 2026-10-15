@@ -1,7 +1,6 @@
 (() => {
   'use strict';
 
-  const TOKEN = document.querySelector('meta[name="studio-token"]').content;
   const IDLE_POLL_MS = 15000;
   const BUSY_FILES_MS = 6000;
   const LOGIN_POLL_MS = 1500;
@@ -39,10 +38,12 @@
     state.wake = () => { clearTimeout(timer); resolve(); };
   });
 
+  // Die Anmeldung beim Studio läuft über ein HttpOnly-Cookie; der Kopf-Eintrag schützt vor fremden Seiten.
   async function api(path, options = {}) {
-    const headers = Object.assign({ 'X-Studio-Token': TOKEN }, options.headers || {});
-    const response = await fetch(path, Object.assign({}, options, { headers }));
+    const headers = Object.assign({ 'X-Studio-Request': '1' }, options.headers || {});
+    const response = await fetch(path, Object.assign({}, options, { headers, credentials: 'same-origin' }));
     const data = await response.json().catch(() => ({}));
+    if (response.status === 403) throw new Error('Bitte öffne das Studio erneut über das Symbol „Motion Studio“.');
     if (!response.ok) throw new Error(data.error || 'Unbekannter Fehler');
     return data;
   }
@@ -89,7 +90,7 @@
 
   const formatSize = (bytes) => (bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
   const formatTime = (seconds) => new Date(seconds * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
-  const mediaUrl = (file) => `${file.url}?t=${encodeURIComponent(TOKEN)}&v=${file.modified}`;
+  const mediaUrl = (file) => `${file.url}?v=${file.modified}`;
 
   // ------------------------------------------------------------ Gespräch
 
@@ -159,7 +160,7 @@
         setBusy(data.busy);
         if (!data.busy) await sleep(IDLE_POLL_MS);
       } catch (error) {
-        toast('Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.');
+        toast(error instanceof TypeError ? 'Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.' : error.message);
         await sleep(5000);
       }
     }
@@ -215,6 +216,7 @@
         const link = document.createElement('a');
         link.href = mediaUrl(file);
         link.target = '_blank';
+        link.rel = 'noopener noreferrer';
         link.title = file.name;
         link.innerHTML = `<img loading="lazy" alt="${escapeHtml(file.name)}" src="${escapeHtml(mediaUrl(file))}">`;
         grid.append(link);

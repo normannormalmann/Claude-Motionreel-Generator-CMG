@@ -83,7 +83,7 @@ When asked for your password, type it and press Enter. Nothing appears while you
 
 Drag your own music, logos or images into the **"Eigene Dateien"** (your files) box on the right. **"Neues Gespräch"** (new conversation) starts a new project. Your videos are kept.
 
-> **Good to know:** So you don't have to confirm every step, Claude may create files and run commands (for example to render) on its own in the studio. Claude works in the studio folder, and the studio can only be reached from your own computer.
+> **Good to know:** So you don't have to confirm every step, Claude may create files and run commands (for example to render) on its own in the studio. The studio can only be reached from your own computer, via the "Motion Studio" icon. Claude basically has the same permissions as you, so only give it files and web pages you trust.
 
 The template buttons are in German. Here's an English request you can paste instead:
 

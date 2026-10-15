@@ -19,6 +19,9 @@ def app_data_dir():
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "claude-motion-studio"
     base.mkdir(parents=True, exist_ok=True)
+    if not IS_WINDOWS:
+        # Gesprächsverlauf und Startkennung nur für den eigenen Benutzer lesbar.
+        os.chmod(base, 0o700)
     return base
 
 
