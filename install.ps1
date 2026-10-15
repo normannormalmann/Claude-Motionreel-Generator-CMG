@@ -309,6 +309,14 @@ function Main {
     Show-NextSteps
 }
 
+# Externe Programme (Playwright, pip, winget) geben UTF-8 aus. Ohne diese Umstellung
+# liest PowerShell 5.1 sie in der alten DOS-Codepage, und Fortschrittsbalken werden zu "ÔûáÔûá".
+$originalConsoleEncoding = $null
+try {
+    $originalConsoleEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object Text.UTF8Encoding $false
+} catch { }
+
 $transcriptStarted = $false
 try {
     Start-Transcript -Path $LogFile -Append | Out-Null
@@ -328,4 +336,7 @@ try {
 }
 
 if ($exitCode -eq 0) { Start-StudioIfWanted }
+if ($originalConsoleEncoding) {
+    try { [Console]::OutputEncoding = $originalConsoleEncoding } catch { }
+}
 exit $exitCode
