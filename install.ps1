@@ -57,6 +57,7 @@ function Add-UserPath([string]$Directory) {
 
 # Führt ein externes Programm aus und bricht bei einem Fehlercode ab.
 function Invoke-Native([string]$Exe, [string[]]$Arguments, [string]$ErrorText) {
+    $env:PYTHONIOENCODING = 'utf-8'
     & $Exe @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "$ErrorText (Fehlercode $LASTEXITCODE)" }
 }
@@ -178,8 +179,13 @@ function Install-Ffmpeg {
 
 function New-StudioVenv([string]$Python) {
     if (Test-Path $VenvPython) {
-        & $VenvPython -c 'import sys' 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { Write-Ok 'Python-Umgebung vorhanden'; return }
+        # Eine defekte Umgebung (z. B. nach Python-Update) schreibt auf stderr; das wirft in PS 5.1.
+        $isHealthy = $false
+        try {
+            & $VenvPython -c 'import sys' 2>$null | Out-Null
+            $isHealthy = $LASTEXITCODE -eq 0
+        } catch { }
+        if ($isHealthy) { Write-Ok 'Python-Umgebung vorhanden'; return }
         Remove-Item -LiteralPath (Join-Path $StudioDir '.venv') -Recurse -Force
     }
     Invoke-Native $Python @('-m', 'venv', (Join-Path $StudioDir '.venv')) 'Die Python-Umgebung konnte nicht erstellt werden'

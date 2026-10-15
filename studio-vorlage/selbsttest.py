@@ -50,13 +50,13 @@ def encode_video(ffmpeg, frame_dir, output):
     """Kodiert die Bilder als H.264. Gibt den genutzten Encoder zurück."""
     for encoder in H264_ENCODERS:
         command = [
-            ffmpeg, "-y", "-loglevel", "error",
+            ffmpeg, "-nostdin", "-y", "-loglevel", "error",
             "-framerate", str(FPS),
             "-i", str(frame_dir / "frame_%04d.png"),
             "-c:v", encoder, "-pix_fmt", "yuv420p",
             str(output),
         ]
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if result.returncode == 0 and output.exists() and output.stat().st_size > 0:
             return encoder
     raise RuntimeError(
@@ -66,6 +66,8 @@ def encode_video(ffmpeg, frame_dir, output):
 
 
 def main():
+    # Playwright-Meldungen enthalten Rahmenzeichen, die eine Windows-Konsole sonst nicht ausgeben kann.
+    sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ffmpeg", default=shutil.which("ffmpeg"), help="Pfad zu ffmpeg")
     args = parser.parse_args()

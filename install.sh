@@ -191,7 +191,7 @@ install_linux_packages() {
       has node || run_root dnf install -y nodejs </dev/null || warn "Node.js konnte nicht installiert werden (optional)."
       ;;
     pacman)
-      run_root pacman -Sy --needed --noconfirm curl git python ffmpeg nodejs npm </dev/null
+      run_root pacman -Syu --needed --noconfirm curl git python ffmpeg nodejs npm </dev/null
       ;;
     zypper)
       run_root zypper --non-interactive install curl git python3 ffmpeg nodejs </dev/null \
@@ -313,8 +313,11 @@ create_launchers() {
 
   if [ "$OS_NAME" = "macOS" ]; then
     if [ -d "$HOME/Desktop" ]; then
-      write_launcher_script "$HOME/Desktop/Motion Studio.command"
-      ok "Startsymbol „Motion Studio“ auf dem Schreibtisch angelegt"
+      if write_launcher_script "$HOME/Desktop/Motion Studio.command" 2>/dev/null; then
+        ok "Startsymbol „Motion Studio“ auf dem Schreibtisch angelegt"
+      else
+        warn "Kein Zugriff auf den Schreibtisch – starte das Studio mit: bash $STUDIO_DIR/studio-starten.sh"
+      fi
     fi
     return 0
   fi
@@ -338,10 +341,12 @@ EOF
   local desktop_dir
   desktop_dir="$( (has xdg-user-dir && xdg-user-dir DESKTOP) || echo "$HOME/Desktop")"
   if [ -d "$desktop_dir" ]; then
-    cp "$entry" "$desktop_dir/motion-studio.desktop"
-    chmod +x "$desktop_dir/motion-studio.desktop"
-    if has gio; then gio set "$desktop_dir/motion-studio.desktop" metadata::trusted true 2>/dev/null || true; fi
-    ok "Startsymbol „Motion Studio“ auf dem Schreibtisch angelegt"
+    if cp "$entry" "$desktop_dir/motion-studio.desktop" && chmod +x "$desktop_dir/motion-studio.desktop"; then
+      if has gio; then gio set "$desktop_dir/motion-studio.desktop" metadata::trusted true 2>/dev/null || true; fi
+      ok "Startsymbol „Motion Studio“ auf dem Schreibtisch angelegt"
+    else
+      warn "Startsymbol auf dem Schreibtisch konnte nicht angelegt werden (Anwendungsmenü funktioniert)."
+    fi
   fi
 }
 
@@ -362,8 +367,16 @@ verify_installation() {
   if has node; then ok "Node.js:     $(node --version)"; else warn "Node.js fehlt (optional)"; fi
 
   step "Selbsttest: kurze Testanimation rendern"
-  "$VENV_PYTHON" "$STUDIO_DIR/tools/selbsttest.py" --ffmpeg "$(command -v ffmpeg)" \
-    || die "Der Selbsttest ist fehlgeschlagen."
+  if "$VENV_PYTHON" "$STUDIO_DIR/tools/selbsttest.py" --ffmpeg "$(command -v ffmpeg)"; then
+    return 0
+  fi
+  if [ "$PKG_MANAGER" = "dnf" ]; then
+    warn "Fedora-Hinweis: Das vorinstallierte ffmpeg-free kann kein H.264."
+    warn "Aktiviere RPM Fusion (https://rpmfusion.org/Configuration) und führe dann aus:"
+    warn "  sudo dnf install ffmpeg --allowerasing"
+    warn "Danach diesen Installer erneut starten."
+  fi
+  die "Der Selbsttest ist fehlgeschlagen."
 }
 
 print_next_steps() {

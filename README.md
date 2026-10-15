@@ -1,5 +1,7 @@
 # Claude Motionreel Generator (CMG)
 
+🇬🇧 [English version](README.en.md)
+
 **Dein eigenes Studio für KI-erstellte Motion-Design-Videos, eingerichtet mit einem Doppelklick.**
 
 Du beschreibst Claude in normalen Worten, welches Video du möchtest. Claude baut daraus eine Animation, prüft die Einzelbilder und speichert das fertige Video als MP4-Datei.
