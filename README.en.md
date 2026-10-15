@@ -173,6 +173,18 @@ At the end, the installer renders a short test animation to confirm that everyth
 
 ---
 
+## Contact
+
+Made by **Norman Schönherr**. Questions, ideas or feedback? Get in touch.
+
+- Website: [normanschoenherr.de](https://normanschoenherr.de)
+- Email: [hey@normanschoenherr.de](mailto:hey@normanschoenherr.de)
+- Instagram: [@normanschonherr](https://www.instagram.com/normanschonherr/)
+
+You'll also find these details in the studio under the **"Info"** button.
+
+---
+
 ## License
 
 [MIT](LICENSE) © 2026 Norman Schönherr

@@ -9,8 +9,11 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <h1>Motion Studio</h1>
+      <span class="brand-mark" aria-hidden="true">CMG</span>
+      <div class="brand-text">
+        <h1>Motion Studio</h1>
+        <span class="brand-sub">Claude Motionreel Generator</span>
+      </div>
     </div>
     <div class="topbar-actions">
       <label class="model-select">
@@ -22,6 +25,7 @@
       </label>
       <button class="ghost" id="open-folder" type="button">Ordner öffnen</button>
       <button class="ghost" id="new-project" type="button">Neues Gespräch</button>
+      <button class="ghost" id="info-open" type="button" aria-haspopup="dialog">Info</button>
     </div>
   </header>
 
@@ -92,6 +96,25 @@
       <div class="dialog-actions">
         <button class="primary" id="login-start" type="button">Jetzt anmelden</button>
         <button class="ghost" id="login-check" type="button">Ich bin angemeldet</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="info" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="info-title">
+      <div class="info-head">
+        <span class="brand-mark" aria-hidden="true">CMG</span>
+        <h2 id="info-title">Claude Motionreel Generator</h2>
+      </div>
+      <p>Entwickelt von Norman Schönherr. Fragen, Ideen oder Feedback? Melde dich gern.</p>
+      <ul class="contact">
+        <li><span>Webseite</span><a href="https://normanschoenherr.de" target="_blank" rel="noopener noreferrer">normanschoenherr.de</a></li>
+        <li><span>E-Mail</span><a href="mailto:hey@normanschoenherr.de">hey@normanschoenherr.de</a></li>
+        <li><span>Instagram</span><a href="https://www.instagram.com/normanschonherr/" target="_blank" rel="noopener noreferrer">@normanschonherr</a></li>
+      </ul>
+      <p class="fine">Claude und Claude Code sind Produkte von Anthropic. CMG ist ein unabhängiges Projekt und steht in keiner Verbindung zu Anthropic.</p>
+      <div class="dialog-actions">
+        <button class="primary" id="info-close" type="button">Schließen</button>
       </div>
     </div>
   </div>

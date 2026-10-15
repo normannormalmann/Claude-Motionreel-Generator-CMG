@@ -339,6 +339,12 @@
     window.addEventListener('dragover', (event) => event.preventDefault());
     window.addEventListener('drop', (event) => event.preventDefault());
 
+    const info = $('info');
+    $('info-open').addEventListener('click', () => { info.hidden = false; $('info-close').focus(); });
+    $('info-close').addEventListener('click', () => { info.hidden = true; });
+    info.addEventListener('click', (event) => { if (event.target === info) info.hidden = true; });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') info.hidden = true; });
+
     $('login-start').addEventListener('click', startLogin);
     $('login-check').addEventListener('click', async () => {
       if (!await checkLogin(true)) $('login-status').textContent = 'Noch nicht angemeldet.';

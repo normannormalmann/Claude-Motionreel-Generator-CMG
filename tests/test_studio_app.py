@@ -258,6 +258,12 @@ class BrowserTests(ServerTestCase):
                 self.assertIn("Verstanden", page.locator(".msg-assistant").first.inner_text())
                 page.locator(".media-card video").first.wait_for(timeout=WAIT_SECONDS * 1000)
                 self.assertTrue(page.locator("#login").is_hidden())
+                page.get_by_role("button", name="Info").click()
+                self.assertTrue(page.locator("#info").is_visible())
+                self.assertEqual(page.locator("#info a[href^='mailto:']").get_attribute("href"),
+                                 "mailto:hey@normanschoenherr.de")
+                page.keyboard.press("Escape")
+                self.assertTrue(page.locator("#info").is_hidden())
                 page.reload()
                 page.locator(".msg-assistant").first.wait_for(timeout=WAIT_SECONDS * 1000)
             finally:

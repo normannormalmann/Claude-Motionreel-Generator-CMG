@@ -159,6 +159,18 @@ Am Ende rendert der Installer automatisch eine kurze Testanimation. So ist siche
 
 ---
 
+## Kontakt
+
+Entwickelt von **Norman Schönherr**. Fragen, Ideen oder Feedback? Melde dich gern.
+
+- Webseite: [normanschoenherr.de](https://normanschoenherr.de)
+- E-Mail: [hey@normanschoenherr.de](mailto:hey@normanschoenherr.de)
+- Instagram: [@normanschonherr](https://www.instagram.com/normanschonherr/)
+
+Die Kontaktdaten findest du auch im Studio über den Knopf **„Info“**.
+
+---
+
 ## Lizenz
 
 [MIT](LICENSE) © 2026 Norman Schönherr
