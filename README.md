@@ -171,8 +171,21 @@ Die Kontaktdaten findest du auch im Studio über den Knopf **„Info“**.
 
 ---
 
+## Haftungsausschluss
+
+Die Nutzung dieses Projekts erfolgt auf eigene Gefahr. Die Software wird ohne Gewährleistung bereitgestellt, wie sie ist (siehe [Lizenz](LICENSE)).
+
+- **Programme anderer Anbieter:** Der Installer lädt und installiert Programme anderer Anbieter, unter anderem Claude Code, Python, Playwright mit Chromium, FFmpeg, Node.js, Git und Homebrew. Für diese gelten deren eigene Lizenzen und Nutzungsbedingungen. Für ihre Funktion, Sicherheit und Verfügbarkeit übernehme ich keine Verantwortung.
+- **Selbstständig arbeitende KI:** Claude legt im Studio selbstständig Dateien an, ändert sie und führt Befehle auf deinem Computer aus. KI-Ergebnisse können fehlerhaft oder unerwartet sein. Sichere wichtige Daten regelmäßig und gib Claude nur Dateien und Webseiten, denen du vertraust.
+- **Kosten und Konto:** Für Claude brauchst du ein eigenes Konto mit passendem Abo oder eine API-Abrechnung. Dabei entstehende Kosten und Nutzungslimits liegen bei dir.
+- **Datenübertragung:** Deine Aufträge und die Inhalte, die Claude dafür liest, werden zur Verarbeitung an Anthropic übertragen. Es gelten die Datenschutz- und Nutzungsbedingungen von Anthropic. Verarbeite keine vertraulichen oder personenbezogenen Daten Dritter ohne Berechtigung.
+- **Rechte an Inhalten:** Du bist selbst dafür verantwortlich, dass du die Rechte an verwendeten Inhalten hast, etwa an Musik, Logos, Bildern und Schriften. Das gilt auch für die Nutzung der erzeugten Videos.
+- **Keine Verbindung zu Anthropic:** Claude und Claude Code sind Marken bzw. Produkte von Anthropic. Dieses Projekt ist unabhängig und wird von Anthropic weder unterstützt noch geprüft.
+
+Soweit gesetzlich zulässig, ist eine Haftung für Schäden aus der Nutzung ausgeschlossen. Davon unberührt bleibt die Haftung für Vorsatz und grobe Fahrlässigkeit, für Schäden aus der Verletzung von Leben, Körper oder Gesundheit sowie nach zwingenden gesetzlichen Vorschriften wie dem Produkthaftungsgesetz.
+
+---
+
 ## Lizenz
 
 [MIT](LICENSE) © 2026 Norman Schönherr
-
-Claude und Claude Code sind Produkte von Anthropic. Dieses Projekt ist ein unabhängiges Hilfswerkzeug und steht in keiner Verbindung zu Anthropic.

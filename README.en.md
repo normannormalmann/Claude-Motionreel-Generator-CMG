@@ -185,8 +185,21 @@ You'll also find these details in the studio under the **"Info"** button.
 
 ---
 
+## Disclaimer
+
+You use this project at your own risk. The software is provided as is, without warranty (see [License](LICENSE)).
+
+- **Third-party software:** The installer downloads and installs software from other providers, including Claude Code, Python, Playwright with Chromium, FFmpeg, Node.js, Git and Homebrew. Their own licenses and terms apply. I take no responsibility for how they work, their security or their availability.
+- **AI that acts on its own:** In the studio, Claude creates and changes files and runs commands on your computer on its own. AI results can be wrong or unexpected. Back up important data regularly and only give Claude files and web pages you trust.
+- **Costs and account:** Claude requires your own account with a suitable plan or API billing. Any resulting costs and usage limits are your responsibility.
+- **Data transfer:** Your requests, and the content Claude reads to fulfil them, are sent to Anthropic for processing. Anthropic's privacy policy and terms of use apply. Don't process confidential data or other people's personal data without permission.
+- **Rights to content:** You are responsible for holding the rights to any content you use, such as music, logos, images and fonts. The same applies to how you use the videos you create.
+- **Not affiliated with Anthropic:** Claude and Claude Code are trademarks or products of Anthropic. This project is independent and is not endorsed or reviewed by Anthropic.
+
+To the extent permitted by law, liability for damages arising from use is excluded. This does not affect liability for intent and gross negligence, for injury to life, body or health, or under mandatory statutory provisions such as product liability law.
+
+---
+
 ## License
 
 [MIT](LICENSE) © 2026 Norman Schönherr
-
-Claude and Claude Code are products of Anthropic. This project is an independent helper tool and is not affiliated with Anthropic.
