@@ -143,3 +143,11 @@ Am Ende rendert der Installer automatisch eine kurze Testanimation. So ist siche
 - **Claude Code direkt in der Konsole:** `studio-im-terminal.ps1` (Windows) oder `studio-im-terminal.sh` (Mac/Linux) im Studio-Ordner.
 - **Protokoll der Studio-App:** `studio-app.log` im Programmdaten-Ordner (`%LOCALAPPDATA%\Claude-Motion-Studio` bzw. `~/.local/share/claude-motion-studio`).
 - Jede Änderung wird automatisch unter Windows, macOS und Ubuntu getestet. Den Stand siehst du unter **Actions**.
+
+---
+
+## Lizenz
+
+[MIT](LICENSE) © 2026 Norman Schönherr
+
+Claude und Claude Code sind Produkte von Anthropic. Dieses Projekt ist ein unabhängiges Hilfswerkzeug und steht in keiner Verbindung zu Anthropic.
