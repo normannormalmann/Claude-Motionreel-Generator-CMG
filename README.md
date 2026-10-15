@@ -109,7 +109,25 @@ Darin findest du:
 - `exports`: deine fertigen Videos
 - `assets`: hier legst du eigene Musik, Logos oder Bilder ab
 - `BEISPIEL-PROMPTS.md`: weitere Beispiel-Aufträge
+- `presets.json`: deine eigenen Vorlagen
 - `CLAUDE.md`: die Arbeitsregeln für Claude. Du kannst sie anpassen.
+
+---
+
+## Vorlagen
+
+Unter dem Eingabefeld findest du fertige Vorlagen wie **„Showreel“**, **„Produktfilm“** oder **„Instagram-Reel“**. Du kannst auch eigene anlegen:
+
+- **Speichern:** Schreib einen Auftrag und klicke auf **„＋ Als Vorlage speichern“**.
+- **Platzhalter:** Begriffe in eckigen Klammern wie `[Produkt]` oder `[Zielgruppe]` fragt das Studio beim Verwenden in einem kleinen Formular ab.
+- **Marken-Vorgaben:** Leg Format (z. B. 9:16 für Reels), Länge, Farben, Schriften, Logo und weitere Hinweise fest. Das Studio hängt sie automatisch an jeden Auftrag mit dieser Vorlage an. Vorlagen mit Marken-Vorgaben haben einen orangen Punkt.
+- **Verwalten:** Unter **„Vorlagen verwalten“** kannst du Vorlagen bearbeiten, kopieren, löschen und als Datei exportieren oder importieren, z. B. um sie im Team zu teilen.
+
+<img src="docs/images/vorlage-bearbeiten.png" alt="Vorlage mit Platzhaltern und Marken-Vorgaben bearbeiten" width="640">
+
+<img src="docs/images/vorlage-ausfuellen.png" alt="Vorlage verwenden: Platzhalter ausfüllen" width="640">
+
+Eigene Vorlagen liegen als `presets.json` im Studio-Ordner. So sind sie in deiner Datensicherung enthalten.
 
 ---
 

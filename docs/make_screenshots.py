@@ -1,7 +1,7 @@
 """Erzeugt die Screenshots für die README.
 
 Rendert ein kurzes Beispielvideo, spielt ein typisches Gespräch ein und
-fotografiert die Oberfläche (hell, dunkel, Anmeldung).
+fotografiert die Oberfläche (hell, dunkel, Anmeldung, Vorlagen).
 
 Aufruf (mit dem Python des Studios, das Playwright enthält):
     <venv-python> docs/make_screenshots.py
@@ -104,6 +104,27 @@ def demo_conversation():
     return items
 
 
+DEMO_PRESET = {
+    "id": "demo-studio-nord", "name": "Studio Nord – Reel",
+    "text": "Erstelle ein Instagram-Reel für Studio Nord über [Thema].\n"
+            "Die erste Sekunde muss sofort Aufmerksamkeit erzeugen. Schließe mit: [Handlungsaufforderung].",
+    "brand": {"format": "9:16", "duration": 15, "colors": ["#E8551F", "#1B1A17", "#F4EFE6"],
+              "fonts": "Georgia für Titel, Inter für Text", "logo": "assets/logo.png",
+              "notes": "Ruhige, präzise Bewegungen. Immer per Du."},
+}
+
+
+def open_preset_editor(page):
+    page.get_by_role("button", name="Vorlagen verwalten").click()
+    page.locator("#preset-list li", has_text="Studio Nord").get_by_role("button", name="Bearbeiten").click()
+    page.locator("#ed-brand-box").evaluate("box => { box.open = true; }")
+
+
+def open_preset_fill(page):
+    page.get_by_role("button", name="Studio Nord – Reel").click()
+    page.locator("#fill-form input").nth(0).fill("Unser neues Büro")
+
+
 def take_screenshots(server):
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
@@ -112,6 +133,8 @@ def take_screenshots(server):
             ("studio-hell.png", {"width": 1440, "height": 900}, "light", None),
             ("studio-dunkel.png", {"width": 1440, "height": 900}, "dark", None),
             ("anmeldung.png", {"width": 1440, "height": 900}, "light", "login"),
+            ("vorlage-bearbeiten.png", {"width": 1440, "height": 1000}, "light", "editor"),
+            ("vorlage-ausfuellen.png", {"width": 1440, "height": 900}, "light", "fill"),
         ]
         for name, viewport, scheme, mode in shots:
             context = browser.new_context(viewport=viewport, color_scheme=scheme, device_scale_factor=2)
@@ -130,6 +153,10 @@ def take_screenshots(server):
             if mode == "login":
                 page.evaluate("""() => { document.getElementById('login').hidden = false;
                     document.getElementById('login-status').textContent = 'Warte auf die Anmeldung im Browser …'; }""")
+            if mode == "editor":
+                open_preset_editor(page)
+            if mode == "fill":
+                open_preset_fill(page)
             page.wait_for_timeout(800)
             page.screenshot(path=str(OUTPUT / name))
             context.close()
@@ -146,6 +173,8 @@ def main():
     for folder in (studio / "exports", studio / "assets", data):
         folder.mkdir(parents=True)
     render_demo_media(studio, ffmpeg)
+    (studio / "presets.json").write_text(json.dumps({"version": 1, "presets": [DEMO_PRESET]}, ensure_ascii=False),
+                                         encoding="utf-8")
     (data / "chat.json").write_text(json.dumps(demo_conversation(), ensure_ascii=False), encoding="utf-8")
 
     server = studio_app.create_server(studio, data)

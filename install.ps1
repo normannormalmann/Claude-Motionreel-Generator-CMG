@@ -28,7 +28,7 @@ $VenvDir = Join-Path $AppDataDir 'venv'
 $VenvPython = Join-Path $VenvDir 'Scripts\python.exe'
 $VenvPythonW = Join-Path $VenvDir 'Scripts\pythonw.exe'
 $AppDir = Join-Path $AppDataDir 'app'
-$AppFiles = @('studio_app.py', 'claude_bridge.py', 'platform_support.py', 'media_files.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js')
+$AppFiles = @('studio_app.py', 'claude_bridge.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js')
 $HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- Hilfen

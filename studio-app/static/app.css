@@ -228,6 +228,65 @@ button.small { padding: 4px 12px; font-size: 13px; }
 .contact a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
 .contact a:hover { text-decoration: underline; }
 .dialog .fine { font-size: 12px; }
+.dialog code { background: var(--surface-2); padding: 1px 5px; border-radius: 5px; font-size: 0.92em; }
+
+/* ------------------------------------------------------------ Vorlagen */
+
+.templates .chip-own { background: transparent; border-color: var(--accent); }
+.templates .chip-brand::after { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: 1px; }
+.templates .chip-action { background: transparent; border: 1px dashed var(--border); color: var(--muted); }
+
+.dialog-wide { max-width: 640px; max-height: 90vh; overflow-y: auto; }
+.form-grid { display: flex; flex-direction: column; gap: 12px; }
+.form-grid label, .field-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.form-grid input:not([type="color"]):not([type="file"]), .form-grid select, .form-grid textarea {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+.form-grid textarea { resize: vertical; }
+.field-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.form-error { margin: 0; font-size: 13px; color: var(--danger); }
+.form-grid details { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.form-grid summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.brand-fields { margin-top: 12px; }
+.brand-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.color-field { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.colors { display: flex; gap: 8px; flex-wrap: wrap; }
+.color-chip { display: inline-flex; align-items: center; gap: 2px; }
+.color-chip input[type="color"] { width: 40px; height: 32px; border: 1px solid var(--border); border-radius: 8px; padding: 2px; background: var(--surface); cursor: pointer; }
+.color-chip button { padding: 2px 8px; }
+
+.brand-summary { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; font-size: 13px; }
+.brand-summary ul { margin: 6px 0; padding-left: 18px; color: var(--muted); }
+.swatches { display: flex; gap: 6px; }
+.swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); }
+
+.preset-list { list-style: none; margin: 0; padding: 0; }
+.preset-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.preset-list li > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+.preset-meta { font-size: 12px; color: var(--muted); }
+.preset-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.button-like {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  font-size: 15px;
+}
+.button-like:hover { border-color: var(--muted); }
+.button-like:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .brand-grid { grid-template-columns: 1fr; }
+}
 .dialog .fine a { color: inherit; text-decoration: underline; }
 
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }

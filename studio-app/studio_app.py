@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import media_files as media  # noqa: E402
 import platform_support as ps  # noqa: E402
 from claude_bridge import BusyError, ClaudeMissingError, StudioBridge  # noqa: E402
+from presets import PresetError, PresetStore  # noqa: E402
 
 IDLE_SHUTDOWN_SECONDS = 180
 STARTUP_GRACE_SECONDS = 90
@@ -36,7 +37,8 @@ MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 MAX_JSON_BYTES = 200 * 1024
 COOKIE_NAME = "motion_studio"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_FILES = {"app.css": "text/css", "app.js": "text/javascript"}
+STATIC_FILES = {"app.css": "text/css", "app.js": "text/javascript", "presets.js": "text/javascript"}
+MAX_IMPORT_BYTES = 2 * 1024 * 1024
 PAGE_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
             "media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 MEDIA_CSP = "sandbox; default-src 'none'"
@@ -55,6 +57,7 @@ class StudioServer(ThreadingHTTPServer):
         super().__init__(address, StudioHandler)
         self.bridge = bridge
         self.studio_dir = Path(studio_dir)
+        self.presets = PresetStore(studio_dir)
         self.launch_key = secrets.token_urlsafe(32)
         self.session_token = secrets.token_urlsafe(32)
         self.last_seen = time.time() + STARTUP_GRACE_SECONDS
@@ -162,6 +165,8 @@ class StudioHandler(BaseHTTPRequestHandler):
                 root: media.list_media(self.server.studio_dir, root) for root in media.MEDIA_ROOTS
             }),
             "/api/login": lambda: self._send_json(self.server.bridge.login_snapshot()),
+            "/api/presets": lambda: self._send_json({"presets": self.server.presets.list_all()}),
+            "/api/presets/export": self._export_presets,
         }
         handler = routes.get(url.path)
         if handler is None:
@@ -180,9 +185,13 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._send_error(HTTPStatus.CONFLICT, "Claude arbeitet gerade noch. Bitte warten oder abbrechen.")
         except ClaudeMissingError:
             return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.")
+        except PresetError as error:
+            return self._send_error(HTTPStatus.BAD_REQUEST, str(error))
 
     def _dispatch_post(self, path):
         bridge = self.server.bridge
+        if path.startswith("/api/presets/"):
+            return self._preset_action(path)
         if path == "/api/chat":
             data = self._read_json()
             message = str(data.get("message", "")).strip()
@@ -206,6 +215,30 @@ class StudioHandler(BaseHTTPRequestHandler):
         return self._send_json({"ok": True})
 
     # ------------------------------------------------------------ Endpunkte
+
+    def _preset_action(self, path):
+        store = self.server.presets
+        if path == "/api/presets/save":
+            return self._send_json({"preset": store.save(self._read_json().get("preset"))})
+        if path == "/api/presets/delete":
+            store.delete(str(self._read_json().get("id", "")))
+            return self._send_json({"ok": True})
+        if path == "/api/presets/import":
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > MAX_IMPORT_BYTES:
+                raise PresetError("Die Datei ist leer oder zu groß.")
+            try:
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+            except ValueError:
+                raise PresetError("Die Datei ist keine gültige Vorlagen-Datei.")
+            imported, skipped = store.import_presets(data)
+            return self._send_json({"imported": imported, "skipped": skipped})
+        return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
+
+    def _export_presets(self):
+        body = json.dumps(self.server.presets.export(), ensure_ascii=False, indent=2).encode("utf-8")
+        headers = {"Content-Disposition": 'attachment; filename="motion-studio-vorlagen.json"'}
+        return self._send_bytes(body, "application/json; charset=utf-8", extra_headers=headers)
 
     def _serve_index(self, query):
         supplied_key = (query.get("k") or [""])[0]

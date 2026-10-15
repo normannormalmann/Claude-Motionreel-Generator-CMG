@@ -27,7 +27,7 @@ APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-motion-studio"
 VENV_DIR="$APP_DATA_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
 APP_DIR="$APP_DATA_DIR/app"
-APP_FILES=(studio_app.py claude_bridge.py platform_support.py media_files.py make_icon.py static/index.html static/app.css static/app.js)
+APP_FILES=(studio_app.py claude_bridge.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js)
 
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then

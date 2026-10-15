@@ -120,7 +120,77 @@
     </div>
   </div>
 
+  <div class="overlay" id="preset-fill" hidden>
+    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="fill-title">
+      <h2 id="fill-title">Vorlage</h2>
+      <p id="fill-intro">Fülle die Felder aus. Leere Felder bleiben als Platzhalter im Auftrag stehen.</p>
+      <form class="form-grid" id="fill-form"></form>
+      <div class="brand-summary" id="fill-brand" hidden></div>
+      <div class="dialog-actions">
+        <button class="primary" id="fill-apply" type="button">In den Auftrag übernehmen</button>
+        <button class="ghost" data-close type="button">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="preset-manager" hidden>
+    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="manager-title">
+      <h2 id="manager-title">Vorlagen</h2>
+      <p>Eigene Vorlagen werden als <code>presets.json</code> im Studio-Ordner gespeichert.</p>
+      <ul class="preset-list" id="preset-list"></ul>
+      <div class="dialog-actions">
+        <button class="primary" id="preset-new" type="button">Neue Vorlage</button>
+        <label class="button-like">Importieren<input type="file" id="preset-import" accept=".json,application/json" hidden></label>
+        <a class="button-like" id="preset-export" href="/api/presets/export" download>Exportieren</a>
+        <button class="ghost" data-close type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="preset-editor" hidden>
+    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <h2 id="editor-title">Neue Vorlage</h2>
+      <form class="form-grid" id="editor-form">
+        <label>Name<input id="ed-name" maxlength="80" autocomplete="off"></label>
+        <label>Auftrag<textarea id="ed-text" rows="7" maxlength="8000"></textarea></label>
+        <p class="field-hint">Tipp: Schreibe Platzhalter in eckige Klammern, z. B. <code>[Produkt]</code>. Beim Verwenden fragt das Studio sie in einem Formular ab.</p>
+        <p class="field-hint" id="ed-placeholders"></p>
+        <details id="ed-brand-box">
+          <summary>Marken-Vorgaben (optional)</summary>
+          <div class="form-grid brand-fields">
+            <div class="brand-grid">
+              <label>Format
+                <select id="ed-format">
+                  <option value="">beliebig</option>
+                  <option value="16:9">16:9 Querformat</option>
+                  <option value="9:16">9:16 Hochformat (Reels, Stories)</option>
+                  <option value="1:1">1:1 Quadrat</option>
+                  <option value="4:5">4:5 Hochformat (Feed)</option>
+                </select>
+              </label>
+              <label>Länge in Sekunden<input id="ed-duration" type="number" min="0" max="600" step="1" placeholder="beliebig"></label>
+            </div>
+            <div class="color-field">
+              <span class="field-label">Farben</span>
+              <div class="colors" id="ed-colors"></div>
+              <button class="ghost small" id="ed-add-color" type="button">＋ Farbe</button>
+            </div>
+            <label>Schriften<input id="ed-fonts" maxlength="120" placeholder="z. B. Inter für Text, Playfair Display für Titel"></label>
+            <label>Logo (aus „Eigene Dateien“)<select id="ed-logo"></select></label>
+            <label>Weitere Hinweise<textarea id="ed-notes" rows="3" maxlength="1000" placeholder="z. B. Tonalität, Dinge, die nie vorkommen sollen"></textarea></label>
+          </div>
+        </details>
+        <p class="form-error" id="ed-error" role="alert" hidden></p>
+      </form>
+      <div class="dialog-actions">
+        <button class="primary" id="ed-save" type="button">Speichern</button>
+        <button class="ghost" data-close type="button">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" hidden></div>
+  <script src="/static/presets.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

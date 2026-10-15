@@ -6,30 +6,8 @@
   const LOGIN_POLL_MS = 1500;
   const MAX_THUMBS = 9;
 
-  const TEMPLATES = [
-    ['Showreel', 'Erstelle ein 15 Sekunden langes Motion-Design-Showreel für ein fiktives Designstudio.\n' +
-      'Format: 1920 × 1080 Pixel, 30 fps.\n' +
-      'Stil: redaktionell, präzise, große Typografie, cremefarbener Hintergrund, schwarze Schrift und orange Akzente.\n' +
-      'Plane fünf Szenen mit unterschiedlichen Bewegungsideen. Beginne zunächst ohne Audio.\n\n' +
-      'Lies CLAUDE.md und prüfe die vorhandenen Werkzeuge. Erstelle dann:\n' +
-      '1. Die HTML-Animation mit window.seek(timeInSeconds).\n2. Ein Python-Renderskript mit Playwright.\n' +
-      '3. Eine Vorschau mit 960 × 540 Pixeln.\n4. Eine Kontaktübersicht der Vorschau.\n' +
-      '5. Nach höchstens zwei visuellen Korrekturrunden den vollständigen MP4-Export.\n\n' +
-      'Prüfe die erzeugten Bilder tatsächlich. Achte auf lesbare Texte und saubere Szenenübergänge.\n' +
-      'Speichere das fertige Video als exports/showreel.mp4.'],
-    ['Produktfilm', 'Erstelle einen 20-Sekunden-Produktfilm für [Produkt].\n\n' +
-      'Zielgruppe: [Zielgruppe]\nHauptaussage: [Nutzen]\nFarben: [Farben]\nAbschluss: [Handlungsaufforderung]\n\n' +
-      '0–4 Sekunden: Problem zeigen.\n4–9 Sekunden: Produkt vorstellen.\n' +
-      '9–15 Sekunden: wichtigste Funktion demonstrieren.\n15–20 Sekunden: Nutzen und Abschluss.\n\n' +
-      'Zeige mir zuerst den Szenenplan. Beginne mit dem Rendering nach meiner Freigabe des Plans.'],
-    ['Szene ändern', 'Überarbeite nur die zweite Szene:\nDer Text soll 0,5 Sekunden länger stehen bleiben.\n' +
-      'Reduziere das Überschwingen der Buchstaben.\nErstelle anschließend eine neue Vorschau.'],
-    ['Musik ergänzen', 'Ergänze assets/music.mp3 als Musik.\nPasse wichtige Übergänge an den Rhythmus an.\n' +
-      'Blende die Musik am Ende aus.\nExportiere Video mit H.264 und Audio mit AAC.'],
-  ];
-
   const $ = (id) => document.getElementById(id);
-  const state = { next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null, loginTimer: null };
+  const state = { next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null, loginTimer: null, assets: [] };
 
   // ------------------------------------------------------------ Hilfen
 
@@ -226,6 +204,7 @@
   }
 
   function renderAssets(files) {
+    state.assets = files;
     const list = $('assets');
     list.replaceChildren(...files.map((file) => {
       const item = document.createElement('li');
@@ -299,15 +278,6 @@
   // ------------------------------------------------------------ Start
 
   function setupControls() {
-    const templates = $('templates');
-    TEMPLATES.forEach(([label, text]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', () => { $('prompt').value = text; $('prompt').focus(); });
-      templates.append(button);
-    });
-
     try { $('model').value = localStorage.getItem('studio-model') || 'opus'; } catch (e) { /* ohne Speicher */ }
     $('model').addEventListener('change', () => { try { localStorage.setItem('studio-model', $('model').value); } catch (e) { /* ohne Speicher */ } });
 
@@ -356,6 +326,7 @@
   }
 
   setupControls();
+  window.CMGPresets.init({ api, postJson, toast, prompt: $('prompt'), getAssets: () => state.assets });
   checkLogin(false);
   refreshFiles();
   setInterval(() => { if (state.busy) refreshFiles(); }, BUSY_FILES_MS);

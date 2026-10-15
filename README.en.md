@@ -123,7 +123,25 @@ Inside you'll find:
 - `exports`: your finished videos
 - `assets`: put your own music, logos or images here
 - `BEISPIEL-PROMPTS.md`: more example requests
+- `presets.json`: your own templates
 - `CLAUDE.md`: Claude's working rules. You can edit them.
+
+---
+
+## Templates
+
+Below the input field you'll find ready-made templates such as **"Showreel"**, **"Produktfilm"** (product film) and **"Instagram-Reel"**. You can also create your own:
+
+- **Save:** write a request and click **"＋ Als Vorlage speichern"** (save as template).
+- **Placeholders:** words in square brackets such as `[Product]` or `[Audience]` are asked for in a small form when you use the template.
+- **Brand settings:** set the format (e.g. 9:16 for Reels), length, colors, fonts, logo and other notes. The studio automatically adds them to every request made with that template. Templates with brand settings show an orange dot.
+- **Manage:** under **"Vorlagen verwalten"** (manage templates) you can edit, copy, delete, export and import templates, for example to share them with your team.
+
+<img src="docs/images/vorlage-bearbeiten.png" alt="Editing a template with placeholders and brand settings" width="640">
+
+<img src="docs/images/vorlage-ausfuellen.png" alt="Using a template: filling in placeholders" width="640">
+
+Your own templates are stored as `presets.json` in the studio folder, so they're included in your backups.
 
 ---
 
