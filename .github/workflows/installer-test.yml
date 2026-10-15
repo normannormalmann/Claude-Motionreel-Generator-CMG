@@ -41,12 +41,19 @@ jobs:
       - name: Studio-Ordner prüfen
         shell: bash
         run: |
-          studio="$HOME/Projects/motion-studio"
-          [ "$RUNNER_OS" = "Windows" ] && studio="$USERPROFILE/Projects/motion-studio"
+          studio="$HOME/Documents/Claude-Motion-Studio"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            studio="$(powershell -NoProfile -Command "[Environment]::GetFolderPath('MyDocuments')" | tr -d '\r')/Claude-Motion-Studio"
+          elif command -v xdg-user-dir >/dev/null && [ "$(xdg-user-dir DOCUMENTS)" != "$HOME" ]; then
+            studio="$(xdg-user-dir DOCUMENTS)/Claude-Motion-Studio"
+          fi
+          echo "Studio-Ordner: $studio"
           for f in CLAUDE.md BEISPIEL-PROMPTS.md tools/selbsttest.py exports assets; do
             test -e "$studio/$f" || { echo "Fehlt: $f"; exit 1; }
           done
           if grep -q '{{' "$studio/CLAUDE.md"; then echo "Platzhalter nicht ersetzt"; exit 1; fi
+          if [ -e "$studio/.venv" ]; then echo "Python-Umgebung darf nicht im Studio-Ordner liegen"; exit 1; fi
+          grep -n "Python:" "$studio/CLAUDE.md"
           echo "Studio-Ordner vollständig."
 
       - name: Protokoll hochladen

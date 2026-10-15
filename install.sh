@@ -6,12 +6,12 @@
 # wird erkannt und übersprungen.
 #
 # Optionale Umgebungsvariablen:
-#   CMG_STUDIO_DIR      Zielordner (Standard: ~/Projects/motion-studio)
+#   CMG_STUDIO_DIR      Zielordner (Standard: ~/Dokumente bzw. ~/Documents/Claude-Motion-Studio)
 #   CMG_NONINTERACTIVE  1 = keine Rückfragen (z. B. für automatische Tests)
 set -Eeuo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-Generator-CMG/main"
-STUDIO_DIR="${CMG_STUDIO_DIR:-$HOME/Projects/motion-studio}"
+STUDIO_DIR=""
 NONINTERACTIVE="${CMG_NONINTERACTIVE:-0}"
 MIN_PYTHON_MINOR=9
 PREFERRED_PYTHONS=(python3.13 python3.12 python3.11 python3.10 python3)
@@ -21,7 +21,10 @@ LOG_FILE="${CMG_LOG_FILE:-${TMPDIR:-/tmp}/cmg-install.log}"
 OS_NAME=""
 PKG_MANAGER=""
 PYTHON=""
-VENV_PYTHON="$STUDIO_DIR/.venv/bin/python"
+# Die Python-Umgebung liegt bewusst außerhalb des Studio-Ordners: Dokumente werden
+# oft per iCloud synchronisiert, und Tausende kleiner Dateien würden das lahmlegen.
+VENV_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-motion-studio/venv"
+VENV_PYTHON="$VENV_DIR/bin/python"
 
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
@@ -102,6 +105,23 @@ detect_platform() {
   fi
   has curl || die "Das Programm 'curl' fehlt. Bitte zuerst curl installieren."
   ok "Betriebssystem: $OS_NAME"
+}
+
+# Standard-Studio-Ordner: der Dokumente-Ordner des Systems (unter deutschem Linux oft ~/Dokumente).
+resolve_studio_dir() {
+  if [ -n "${CMG_STUDIO_DIR:-}" ]; then
+    STUDIO_DIR="$CMG_STUDIO_DIR"
+    return 0
+  fi
+  local documents="$HOME/Documents"
+  if [ "$OS_NAME" = "Linux" ] && has xdg-user-dir; then
+    local xdg_documents
+    xdg_documents="$(xdg-user-dir DOCUMENTS 2>/dev/null || true)"
+    if [ -n "$xdg_documents" ] && [ "$xdg_documents" != "$HOME" ]; then
+      documents="$xdg_documents"
+    fi
+  fi
+  STUDIO_DIR="$documents/Claude-Motion-Studio"
 }
 
 ask_for_password_once() {
@@ -237,8 +257,9 @@ create_venv() {
     ok "Python-Umgebung vorhanden"
     return 0
   fi
-  rm -rf "$STUDIO_DIR/.venv"
-  if "$PYTHON" -m venv "$STUDIO_DIR/.venv"; then
+  rm -rf "$VENV_DIR"
+  mkdir -p "$(dirname "$VENV_DIR")"
+  if "$PYTHON" -m venv "$VENV_DIR"; then
     ok "Python-Umgebung erstellt"
     return 0
   fi
@@ -246,8 +267,8 @@ create_venv() {
     local minor
     minor="$("$PYTHON" -c 'import sys; print(sys.version_info[1])')"
     run_root env DEBIAN_FRONTEND=noninteractive apt-get install -y "python3.$minor-venv" </dev/null
-    rm -rf "$STUDIO_DIR/.venv"
-    "$PYTHON" -m venv "$STUDIO_DIR/.venv" && ok "Python-Umgebung erstellt" && return 0
+    rm -rf "$VENV_DIR"
+    "$PYTHON" -m venv "$VENV_DIR" && ok "Python-Umgebung erstellt" && return 0
   fi
   die "Die Python-Umgebung konnte nicht erstellt werden."
 }
@@ -287,11 +308,18 @@ write_studio_files() {
   local template
   template="$(mktemp)"
   fetch_template CLAUDE.md "$template"
-  LC_ALL=C sed \
-    -e "s|{{BETRIEBSSYSTEM}}|$OS_NAME|g" \
-    -e "s|{{SHELL_HINWEIS}}|Verwende bash/zsh-kompatible Befehle und Pfade mit Schrägstrichen (/).|g" \
-    -e "s|{{PYTHON}}|.venv/bin/python|g" \
-    "$template" >"$STUDIO_DIR/CLAUDE.md"
+  # Ersetzung per Python statt sed: Pfade dürfen beliebige Sonderzeichen enthalten.
+  "$VENV_PYTHON" - "$template" "$STUDIO_DIR/CLAUDE.md" "$OS_NAME" \
+    "Verwende bash/zsh-kompatible Befehle und Pfade mit Schrägstrichen (/)." "$VENV_PYTHON" <<'PYEOF'
+import sys
+source, target, os_name, shell_hint, python_path = sys.argv[1:6]
+with open(source, encoding="utf-8") as handle:
+    text = handle.read()
+for placeholder, value in (("{{BETRIEBSSYSTEM}}", os_name), ("{{SHELL_HINWEIS}}", shell_hint), ("{{PYTHON}}", python_path)):
+    text = text.replace(placeholder, value)
+with open(target, "w", encoding="utf-8") as handle:
+    handle.write(text)
+PYEOF
   rm -f "$template"
   ok "CLAUDE.md mit den Studio-Regeln angelegt"
 }
@@ -352,7 +380,13 @@ EOF
 
 setup_studio() {
   step "Richte den Studio-Ordner ein: $STUDIO_DIR"
-  mkdir -p "$STUDIO_DIR/exports" "$STUDIO_DIR/assets" "$STUDIO_DIR/tools"
+  if ! mkdir -p "$STUDIO_DIR/exports" "$STUDIO_DIR/assets" "$STUDIO_DIR/tools"; then
+    if [ "$OS_NAME" = "macOS" ]; then
+      warn "Das Terminal braucht Zugriff auf deinen Ordner „Dokumente“."
+      warn "Systemeinstellungen → Datenschutz & Sicherheit → Dateien und Ordner → Terminal → „Dokumente“ einschalten."
+    fi
+    die "Der Studio-Ordner konnte nicht angelegt werden: $STUDIO_DIR"
+  fi
   create_venv
   install_render_tools
   write_studio_files
@@ -414,6 +448,7 @@ main() {
 
   step "Prüfe das System"
   detect_platform
+  resolve_studio_dir
   if [ "$OS_NAME" = "macOS" ]; then install_macos_packages; else install_linux_packages; fi
   ok "Python: $PYTHON"
   install_claude_code

@@ -3,7 +3,10 @@
 ## Umgebung
 - Dieses Projekt läuft unter {{BETRIEBSSYSTEM}}.
 - {{SHELL_HINWEIS}}
-- Python: {{PYTHON}} (die virtuelle Umgebung muss nicht aktiviert werden).
+- Python: `{{PYTHON}}`
+  - Diesen Pfad direkt aufrufen (in Anführungszeichen); die Umgebung muss nicht aktiviert werden.
+  - Sie liegt bewusst außerhalb des Studio-Ordners, damit Cloud-Synchronisierung (OneDrive/iCloud) nicht stört. Lege im Studio-Ordner keine eigene .venv an.
+- Temporäre Einzelbilder möglichst im System-Temp-Ordner ablegen und nach dem Export löschen, damit sie nicht synchronisiert werden.
 - Playwright mit Chromium ist installiert.
 - FFmpeg steht über PATH zur Verfügung.
 - `tools/selbsttest.py` prüft die komplette Render-Kette (Playwright → Bilder → FFmpeg → MP4).

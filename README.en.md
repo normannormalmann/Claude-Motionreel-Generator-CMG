@@ -52,6 +52,7 @@ curl -fsSL https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-
 
 3. When asked for your **password**, type your Mac password and press Enter. **Nothing appears while you type.** That's normal.
 4. If your Mac offers to install the "command line developer tools", click **"Install"**.
+5. If your Mac asks whether "Terminal" may access your **Documents** folder, click **"Allow"**.
 
 <details>
 <summary>Alternative: double-click instead of Terminal</summary>
@@ -105,9 +106,9 @@ More examples (in German) are in **`BEISPIEL-PROMPTS.md`** in your studio folder
 
 | System | Folder |
 |---|---|
-| Windows | `C:\Users\<your name>\Projects\motion-studio` |
-| Mac | `/Users/<your name>/Projects/motion-studio` |
-| Linux | `/home/<your name>/Projects/motion-studio` |
+| Windows | **Documents** → `Claude-Motion-Studio` |
+| Mac | **Documents** → `Claude-Motion-Studio` |
+| Linux | **Documents** → `Claude-Motion-Studio` |
 
 Inside you'll find:
 
@@ -129,6 +130,8 @@ Inside you'll find:
 | **Node.js** | Helper tool for Claude (optional) |
 | **Git** (Windows only) | Needed by Claude Code on Windows |
 | **Homebrew** (Mac only) | Package manager used to install Python and FFmpeg |
+
+The Python environment is deliberately kept out of your Documents folder, in the hidden application data folder. That way it doesn't slow down OneDrive or iCloud sync.
 
 Programs you already have are detected and not installed twice. You can safely run the installation again. It won't overwrite your own `CLAUDE.md`.
 

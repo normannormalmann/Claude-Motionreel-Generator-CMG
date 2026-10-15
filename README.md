@@ -50,6 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-
 
 3. Wenn du nach deinem **Passwort** gefragt wirst, gib dein Mac-Passwort ein und drücke Enter. **Beim Tippen erscheinen keine Zeichen.** Das ist normal.
 4. Bietet dein Mac an, die „Befehlszeilen-Entwicklerwerkzeuge“ zu installieren, klicke auf **„Installieren“**.
+5. Fragt dein Mac, ob „Terminal“ auf den Ordner **Dokumente** zugreifen darf, klicke auf **„Erlauben“**.
 
 <details>
 <summary>Alternative: Doppelklick statt Terminal</summary>
@@ -82,9 +83,9 @@ Wenn du nach deinem Passwort gefragt wirst, gib es ein und drücke Enter. Beim T
 
 | System | Ordner |
 |---|---|
-| Windows | `C:\Users\<dein Name>\Projects\motion-studio` |
-| Mac | `/Users/<dein Name>/Projects/motion-studio` |
-| Linux | `/home/<dein Name>/Projects/motion-studio` |
+| Windows | **Dokumente** → `Claude-Motion-Studio` |
+| Mac | **Dokumente** → `Claude-Motion-Studio` |
+| Linux | **Dokumente** bzw. **Documents** → `Claude-Motion-Studio` |
 
 Darin findest du:
 
@@ -106,6 +107,8 @@ Darin findest du:
 | **Node.js** | Hilfswerkzeug für Claude (optional) |
 | **Git** (nur Windows) | Wird von Claude Code unter Windows benötigt |
 | **Homebrew** (nur Mac) | Paketverwaltung, über die Python und FFmpeg installiert werden |
+
+Die Python-Umgebung liegt bewusst nicht im Ordner Dokumente, sondern im versteckten Programmdaten-Ordner. So bremst sie OneDrive oder iCloud nicht aus.
 
 Bereits installierte Programme werden erkannt und nicht doppelt installiert. Du kannst die Installation gefahrlos erneut starten. Deine eigene `CLAUDE.md` wird dabei nicht überschrieben.
 

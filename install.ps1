@@ -5,7 +5,7 @@
 # Vorhandenes wird erkannt und übersprungen.
 #
 # Optionale Umgebungsvariablen:
-#   CMG_STUDIO_DIR      Zielordner (Standard: %USERPROFILE%\Projects\motion-studio)
+#   CMG_STUDIO_DIR      Zielordner (Standard: Dokumente\Claude-Motion-Studio)
 #   CMG_NONINTERACTIVE  1 = keine Rückfragen (z. B. für automatische Tests)
 #Requires -Version 5.1
 
@@ -15,13 +15,16 @@ $ProgressPreference = 'SilentlyContinue'
 
 $RepoRaw = 'https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-Generator-CMG/main'
 $FfmpegZipUrl = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
-$StudioDir = if ($env:CMG_STUDIO_DIR) { $env:CMG_STUDIO_DIR } else { Join-Path $env:USERPROFILE 'Projects\motion-studio' }
+$StudioDir = if ($env:CMG_STUDIO_DIR) { $env:CMG_STUDIO_DIR } else { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Claude-Motion-Studio' }
 $NonInteractive = $env:CMG_NONINTERACTIVE -eq '1'
 $MinPythonMinor = 9
 $PythonPackages = @('playwright', 'pillow', 'numpy')
 $LogFile = if ($env:CMG_LOG_FILE) { $env:CMG_LOG_FILE } else { Join-Path $env:TEMP 'cmg-install.log' }
 $ScriptDir = $PSScriptRoot
-$VenvPython = Join-Path $StudioDir '.venv\Scripts\python.exe'
+# Die Python-Umgebung liegt bewusst außerhalb des Studio-Ordners: Dokumente werden oft per
+# OneDrive synchronisiert, und Tausende kleiner Dateien würden das lahmlegen.
+$VenvDir = Join-Path $env:LOCALAPPDATA 'Claude-Motion-Studio\venv'
+$VenvPython = Join-Path $VenvDir 'Scripts\python.exe'
 $HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- Hilfen
@@ -186,9 +189,9 @@ function New-StudioVenv([string]$Python) {
             $isHealthy = $LASTEXITCODE -eq 0
         } catch { }
         if ($isHealthy) { Write-Ok 'Python-Umgebung vorhanden'; return }
-        Remove-Item -LiteralPath (Join-Path $StudioDir '.venv') -Recurse -Force
+        Remove-Item -LiteralPath $VenvDir -Recurse -Force
     }
-    Invoke-Native $Python @('-m', 'venv', (Join-Path $StudioDir '.venv')) 'Die Python-Umgebung konnte nicht erstellt werden'
+    Invoke-Native $Python @('-m', 'venv', $VenvDir) 'Die Python-Umgebung konnte nicht erstellt werden'
     Write-Ok 'Python-Umgebung erstellt'
 }
 
@@ -211,7 +214,7 @@ function Write-StudioFiles {
     $text = [IO.File]::ReadAllText($template, [Text.Encoding]::UTF8)
     $text = $text.Replace('{{BETRIEBSSYSTEM}}', 'Windows (nativ)')
     $text = $text.Replace('{{SHELL_HINWEIS}}', 'Verwende PowerShell-kompatible Befehle und Windows-Pfade.')
-    $text = $text.Replace('{{PYTHON}}', '.venv\Scripts\python.exe')
+    $text = $text.Replace('{{PYTHON}}', $VenvPython)
     [IO.File]::WriteAllText($claudeMd, $text, (New-Object Text.UTF8Encoding $false))
     Remove-Item -LiteralPath $template -Force
     Write-Ok 'CLAUDE.md mit den Studio-Regeln angelegt'
