@@ -1,0 +1,149 @@
+name: Versions-Check
+
+# Sucht jede Woche neue Versionen von Codex und den Python-Paketen, testet sie mit dem
+# Installer auf Windows, macOS und Linux und schlägt sie erst danach als Pull Request vor.
+# Nach dem Merge bietet jedes Studio das Update an (versions.json → "cmg").
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'  # montags 05:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - versions.json
+      - .github/scripts/update_versions.py
+      - .github/workflows/dependency-updates.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: versions-check-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  probelauf:
+    # Prüft Änderungen an diesem Workflow, ohne etwas zu schreiben (nur Leserechte).
+    name: Probelauf
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - run: python .github/scripts/update_versions.py --dry-run
+
+  pruefen:
+    name: Neue Versionen suchen
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+      sha: ${{ steps.push.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
+      - name: Versionen prüfen
+        id: check
+        run: python .github/scripts/update_versions.py
+
+      - name: Branch mit den neuen Versionen pushen
+        id: push
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B auto/versionen
+          git commit -am "chore: geprüfte Versionen aktualisieren"
+          git push --force origin auto/versionen
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  testen:
+    name: Installer testen
+    needs: pruefen
+    if: needs.pruefen.outputs.sha != ''
+    uses: ./.github/workflows/installer-test.yml
+    with:
+      ref: ${{ needs.pruefen.outputs.sha }}
+
+  vorschlagen:
+    name: Update vorschlagen
+    needs: [pruefen, testen]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TESTED_SHA: ${{ needs.pruefen.outputs.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      COMPARE_URL: ${{ github.server_url }}/${{ github.repository }}/compare/main...auto/versionen?expand=1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.pruefen.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Pull Request anlegen oder aktualisieren
+        run: |
+          # Vorgeschlagen wird nur genau der getestete Stand.
+          head="$(git ls-remote origin refs/heads/auto/versionen | cut -f1)"
+          if [ "$head" != "$TESTED_SHA" ]; then
+            echo "::error::auto/versionen wurde nach dem Test verändert ($head statt $TESTED_SHA)."
+            exit 1
+          fi
+          if git diff --quiet origin/main -- versions.json; then
+            echo "versions.json entspricht bereits main – nichts vorzuschlagen."
+            exit 0
+          fi
+
+          title="chore: geprüfte Versionen aktualisieren"
+          {
+            echo "Der wöchentliche Versions-Check hat neue Versionen gefunden und den Installer damit"
+            echo "auf Windows, macOS und Linux erfolgreich getestet (Commit $TESTED_SHA): $RUN_URL"
+            echo
+            echo '```diff'
+            git diff origin/main -- versions.json
+            echo '```'
+            echo
+            echo "Nach dem Merge bietet jedes Motion Studio das Update an."
+          } > body.md
+          issue="$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')"
+
+          pr="$(gh pr list --head auto/versionen --state open --json number --jq '.[0].number')"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file body.md
+          elif output="$(gh pr create --base main --head auto/versionen --title "$title" --body-file body.md 2>&1)"; then
+            echo "$output"
+            pr="$output"
+          elif echo "$output" | grep -qi "not permitted to create"; then
+            # Ohne die Repo-Einstellung "Allow GitHub Actions to create pull requests" bleibt ein Issue.
+            echo "::warning::GitHub Actions darf keine PRs anlegen – lege stattdessen ein Issue an."
+            {
+              echo "Der Branch \`auto/versionen\` ist getestet. PR anlegen: $COMPARE_URL"
+              echo
+              cat body.md
+            } > issue.md
+            if [ -n "$issue" ]; then
+              gh issue edit "$issue" --body-file issue.md
+            else
+              gh issue create --title "$title" --body-file issue.md
+            fi
+            exit 0
+          else
+            echo "$output"
+            exit 1
+          fi
+
+          if [ -n "$issue" ]; then
+            gh issue close "$issue" --comment "Erledigt – der Vorschlag ist jetzt ein Pull Request: $pr"
+          fi

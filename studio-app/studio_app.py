@@ -30,8 +30,11 @@ import platform_support as ps  # noqa: E402
 from claude_bridge import BusyError, EngineMissingError, StudioBridge  # noqa: E402
 from engines import ENGINES  # noqa: E402
 from presets import PresetError, PresetStore  # noqa: E402
+from updates import UpdateChecker, UpdateUnavailableError  # noqa: E402
 
 IDLE_SHUTDOWN_SECONDS = 180
+UPDATE_SHUTDOWN_DELAY_SECONDS = 1.0
+APP_DIR = Path(__file__).resolve().parent
 STARTUP_GRACE_SECONDS = 90
 LONG_POLL_SECONDS = 20
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
@@ -63,9 +66,19 @@ class StudioServer(ThreadingHTTPServer):
         self.bridge = bridge
         self.studio_dir = Path(studio_dir)
         self.presets = PresetStore(studio_dir)
+        self.updates = UpdateChecker(APP_DIR, bridge.data_dir, studio_dir)
+        self.updating = False
+        # Schützt "Auftrag starten" und "Update starten" gegeneinander.
+        self.job_lock = threading.Lock()
         self.launch_key = secrets.token_urlsafe(32)
         self.session_token = secrets.token_urlsafe(32)
         self.last_seen = time.time() + STARTUP_GRACE_SECONDS
+
+    def handle_error(self, request, client_address):
+        """Ein geschlossener Browser-Tab ist kein Fehler; alles andere landet im Protokoll."""
+        if isinstance(sys.exc_info()[1], (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)):
+            return
+        logging.exception("Fehler bei einer Anfrage von %s", client_address[0])
 
     @property
     def allowed_hosts(self):
@@ -173,6 +186,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             "/api/login": lambda: self._send_json(self.server.bridge.login_snapshot()),
             "/api/presets": lambda: self._send_json({"presets": self.server.presets.list_all()}),
             "/api/presets/export": self._export_presets,
+            "/api/update": lambda: self._send_json(self.server.updates.status(force="force" in query)),
         }
         handler = routes.get(url.path)
         if handler is None:
@@ -194,6 +208,8 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._dispatch_post(url.path)
         except BusyError:
             return self._send_error(HTTPStatus.CONFLICT, "Es läuft gerade noch ein Auftrag. Bitte warten oder abbrechen.")
+        except UpdateUnavailableError:
+            return self._send_error(HTTPStatus.BAD_REQUEST, "Es gibt gerade kein Update.")
         except EngineMissingError as error:
             return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "{} wurde nicht gefunden. Bitte den Installer "
                                     "erneut starten.".format(error.engine.label))
@@ -212,12 +228,20 @@ class StudioHandler(BaseHTTPRequestHandler):
         bridge = self.server.bridge
         if path.startswith("/api/presets/"):
             return self._preset_action(path)
+        if path == "/api/update/start":
+            return self._start_update()
+        if path == "/api/update/ack":
+            self.server.updates.acknowledge_result()
+            return self._send_json({"ok": True})
         if path == "/api/chat":
             data = self._read_json()
             message = str(data.get("message", "")).strip()
             if not message:
                 return self._send_error(HTTPStatus.BAD_REQUEST, "Bitte einen Auftrag eingeben.")
-            bridge.start_chat(message, str(data.get("model", "")))
+            with self.server.job_lock:
+                if self.server.updating:
+                    return self._send_error(HTTPStatus.CONFLICT, "Das Studio wird gerade aktualisiert.")
+                bridge.start_chat(message, str(data.get("model", "")))
         elif path == "/api/stop":
             bridge.stop()
         elif path == "/api/reset":
@@ -254,6 +278,19 @@ class StudioHandler(BaseHTTPRequestHandler):
             imported, skipped = store.import_presets(data)
             return self._send_json({"imported": imported, "skipped": skipped})
         return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
+
+    def _start_update(self):
+        """Startet den Update-Helfer und beendet das Studio kurz danach – nie während eines Auftrags."""
+        server = self.server
+        with server.job_lock:
+            if server.updating:
+                return self._send_error(HTTPStatus.CONFLICT, "Das Update läuft bereits.")
+            if server.bridge.busy:
+                raise BusyError()
+            server.updates.start()
+            server.updating = True
+        threading.Timer(UPDATE_SHUTDOWN_DELAY_SECONDS, server.shutdown).start()
+        return self._send_json({"ok": True})
 
     def _export_presets(self):
         body = json.dumps(self.server.presets.export(), ensure_ascii=False, indent=2).encode("utf-8")
@@ -397,7 +434,7 @@ def main():
     logging.info("Motion Studio läuft auf Port %s (Studio-Ordner: %s)", server.server_address[1], studio)
     print("Motion Studio läuft – dieses Fenster kann offen bleiben.")
 
-    if "--no-browser" not in sys.argv:
+    if "--no-browser" not in sys.argv and os.environ.get("CMG_NO_BROWSER") != "1":
         threading.Timer(0.5, webbrowser.open, args=(server.launch_url,)).start()
     threading.Thread(target=watch_idle, args=(server,), daemon=True).start()
     try:

@@ -1,0 +1,9 @@
+{
+  "cmg": "1.1.0",
+  "codex": "0.162.1",
+  "python_packages": {
+    "playwright": "1.64.0",
+    "pillow": "13.0.0",
+    "numpy": "2.5.4"
+  }
+}

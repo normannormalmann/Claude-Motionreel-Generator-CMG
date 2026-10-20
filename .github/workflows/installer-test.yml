@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  # Wird vom wöchentlichen Versions-Check aufgerufen, um neue Versionen vor dem PR zu testen.
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, der getestet wird
+        type: string
+        required: false
+        default: ''
 
 jobs:
   lokal:
@@ -18,7 +26,9 @@ jobs:
       CMG_NONINTERACTIVE: '1'
       CMG_LOG_FILE: ${{ github.workspace }}/cmg-install.log
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Installer ausführen (Windows)
         if: runner.os == 'Windows'
@@ -73,14 +83,14 @@ jobs:
               test -f "$HOME/.local/share/applications/motion-studio.desktop" || { echo "Menüeintrag fehlt"; exit 1; }
             fi
           fi
-          for f in studio_app.py claude_bridge.py engines.py stop_studio.py platform_support.py media_files.py presets.py static/index.html static/app.js static/presets.js icon.png config.json; do
+          for f in studio_app.py claude_bridge.py engines.py stop_studio.py updates.py update_runner.py versions.json platform_support.py media_files.py presets.py static/index.html static/app.js static/presets.js icon.png config.json; do
             test -f "$data/app/$f" || test -f "$data/$f" || { echo "Fehlt: $f"; exit 1; }
           done
           "$py" -m unittest discover -s tests -v
 
       - name: Protokoll hochladen
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: protokoll-${{ matrix.os }}
           path: ${{ github.workspace }}/cmg-install.log
@@ -89,7 +99,7 @@ jobs:
   ferninstallation:
     name: Ein-Zeilen-Installation (${{ matrix.os }})
     # Funktioniert nur, wenn das Repository öffentlich ist.
-    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' }}
+    if: ${{ !github.event.repository.private && github.ref == 'refs/heads/main' && !inputs.ref }}
     strategy:
       fail-fast: false
       matrix:

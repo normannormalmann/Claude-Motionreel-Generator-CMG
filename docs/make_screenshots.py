@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "studio-app"))
 os.environ["CMG_CLAUDE_BIN"] = str(ROOT / "tests" / "fake_claude.py")
 os.environ["CMG_CODEX_BIN"] = str(ROOT / "tests" / "fake_codex.py")
 os.environ["CMG_FAKE_CODEX_LOGGED_OUT"] = "1"  # damit das Studio den ChatGPT-Anmeldedialog zeigt
+os.environ["CMG_NO_UPDATE_CHECK"] = "1"  # kein Update-Hinweis auf den Bildern
 
 import studio_app  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
