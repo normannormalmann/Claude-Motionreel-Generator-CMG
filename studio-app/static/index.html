@@ -32,6 +32,7 @@
           </optgroup>
         </select>
       </label>
+      <button class="ghost" id="conversations-open" type="button" aria-haspopup="dialog">Gespräche</button>
       <button class="ghost" id="open-folder" type="button">Ordner öffnen</button>
       <button class="ghost" id="new-project" type="button">Neues Gespräch</button>
       <button class="ghost" id="info-open" type="button" aria-haspopup="dialog">Info</button>
@@ -126,6 +127,17 @@
       <p class="fine">Claude und Claude Code sind Produkte von Anthropic, ChatGPT und Codex sind Produkte von OpenAI. CMG ist ein unabhängiges Projekt und steht mit keinem der beiden Unternehmen in Verbindung.</p>
       <div class="dialog-actions">
         <button class="primary" id="info-close" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="conversations" hidden>
+    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="conversations-title">
+      <h2 id="conversations-title">Gespräche</h2>
+      <input id="conversation-search" type="search" placeholder="Durchsuchen, z. B. „Studio Nord“ oder „Logo“" autocomplete="off" aria-label="Gespräche durchsuchen">
+      <ul class="conversation-list" id="conversation-list"></ul>
+      <div class="dialog-actions">
+        <button class="ghost" id="conversations-close" type="button">Schließen</button>
       </div>
     </div>
   </div>

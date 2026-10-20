@@ -158,6 +158,26 @@ def show_model_list(page):
     return {"x": left, "y": 0, "width": menu["x"] + menu["width"] + 32 - left, "height": menu["y"] + menu["height"] + 32}
 
 
+DEMO_ARCHIVE = [
+    ("2026-10-14_0930_Logo-Animation-für-Café-Blau", 1792060200,
+     "Logo-Animation für Café Blau: Das Logo baut sich aus Kaffeebohnen auf.",
+     "Die Vorschau ist fertig: **logo_vorschau.mp4**. Das Logo setzt sich aus zwölf Bohnen zusammen."),
+    ("2026-10-09_1615_Instagram-Reel-Herbstaktion", 1791627300,
+     "Erstelle ein Instagram-Reel über unsere Herbstaktion mit 20 % Rabatt.",
+     "Die Vorschau ist fertig: **reel_vorschau.mp4**. Das Logo erscheint in der letzten Sekunde groß."),
+]
+
+
+def write_demo_archive(data):
+    folder = data / "conversations"
+    folder.mkdir()
+    for conversation_id, updated, request, answer in DEMO_ARCHIVE:
+        items = [{"kind": "user", "text": request}, {"kind": "assistant", "text": answer}, {"kind": "done"}]
+        record = {"id": conversation_id, "items": items, "sessions": {}, "engine": "claude",
+                  "folder": conversation_id, "updated": updated}
+        (folder / (conversation_id + ".json")).write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+
+
 def take_screenshots(server):
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
@@ -168,6 +188,7 @@ def take_screenshots(server):
             ("anmeldung.png", {"width": 1440, "height": 900}, "light", "login"),
             ("anmeldung-chatgpt.png", {"width": 1440, "height": 900}, "light", "login-codex"),
             ("modell-auswahl.png", {"width": 1440, "height": 900}, "light", "models"),
+            ("gespraeche.png", {"width": 1440, "height": 900}, "light", "conversations"),
             ("vorlage-bearbeiten.png", {"width": 1440, "height": 1000}, "light", "editor"),
             ("vorlage-ausfuellen.png", {"width": 1440, "height": 900}, "light", "fill"),
         ]
@@ -193,6 +214,10 @@ def take_screenshots(server):
                 page.locator("#login").wait_for()
                 page.evaluate("""() => { document.getElementById('login-status').textContent =
                     'Warte auf die Anmeldung im Browser …'; }""")
+            if mode == "conversations":
+                page.get_by_role("button", name="Gespräche").click()
+                page.locator("#conversation-search").fill("Logo")
+                page.locator("#conversation-list li", has_text="Herbstaktion").wait_for()
             clip = show_model_list(page) if mode == "models" else None
             if mode == "editor":
                 open_preset_editor(page)
@@ -217,7 +242,9 @@ def main():
     (studio / "presets.json").write_text(json.dumps({"version": 1, "presets": [DEMO_PRESET]}, ensure_ascii=False),
                                          encoding="utf-8")
     (data / "chat.json").write_text(json.dumps(demo_conversation(), ensure_ascii=False), encoding="utf-8")
-    (data / "session.json").write_text(json.dumps({"sessions": {}, "engine": "claude", "folder": DEMO_FOLDER},
+    write_demo_archive(data)
+    (data / "session.json").write_text(json.dumps({"sessions": {}, "engine": "claude", "folder": DEMO_FOLDER,
+                                                   "id": DEMO_FOLDER, "updated": 1792498860},
                                                   ensure_ascii=False), encoding="utf-8")
 
     server = studio_app.create_server(studio, data)

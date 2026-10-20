@@ -36,7 +36,7 @@ $AppDir = Join-Path $AppDataDir 'app'
 $CodexVersion = $null
 $PinnedPackages = @()
 $VersionsFile = $null
-$AppFiles = @('studio_app.py', 'claude_bridge.py', 'engines.py', 'stop_studio.py', 'updates.py', 'update_runner.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js', 'static/favicon.png', 'static/apple-touch-icon.png')
+$AppFiles = @('studio_app.py', 'claude_bridge.py', 'engines.py', 'conversations.py', 'stop_studio.py', 'updates.py', 'update_runner.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js', 'static/favicon.png', 'static/apple-touch-icon.png')
 $HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- Hilfen

@@ -220,6 +220,13 @@ button.small { padding: 4px 12px; font-size: 13px; }
 .login-status { font-size: 13px; white-space: pre-wrap; }
 .update-changes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .update-changes span { color: var(--muted); }
+#conversation-search { width: 100%; box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); font: inherit; }
+.conversation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow: auto; }
+.conversation-list li { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; }
+.conversation-list .conversation-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.conversation-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-list .conversation-meta, .conversation-list .conversation-snippet { font-size: 13px; color: var(--muted); }
+.conversation-list .conversation-snippet { overflow-wrap: anywhere; }
 .media-badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .media-badge.is-final { background: var(--accent); color: var(--accent-text); }
 .media-actions { display: flex; align-items: center; gap: 8px; padding-top: 6px; }

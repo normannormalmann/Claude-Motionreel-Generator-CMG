@@ -37,7 +37,7 @@ APP_DIR="$APP_DATA_DIR/app"
 CODEX_VERSION=""
 PINNED_PACKAGES=()
 VERSIONS_FILE=""
-APP_FILES=(studio_app.py claude_bridge.py engines.py stop_studio.py updates.py update_runner.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js static/favicon.png static/apple-touch-icon.png)
+APP_FILES=(studio_app.py claude_bridge.py engines.py conversations.py stop_studio.py updates.py update_runner.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js static/favicon.png static/apple-touch-icon.png)
 
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then

@@ -95,6 +95,10 @@ Wenn du nach deinem Passwort gefragt wirst, gib es ein und drücke Enter. Beim T
 
 Eigene Musik, Logos oder Bilder ziehst du rechts in das Feld **„Eigene Dateien“**. Mit **„Neues Gespräch“** beginnst du ein neues Projekt. Deine Videos bleiben dabei erhalten.
 
+**Frühere Gespräche:** Über **„Gespräche“** oben findest du alle bisherigen Gespräche. Das Suchfeld durchsucht Titel und alle Nachrichten, auch die Antworten der KI. Mit **„Öffnen“** machst du genau dort weiter, wo du aufgehört hast, mit dem Verlauf und den Videos dieses Gesprächs.
+
+<img src="docs/images/gespraeche.png" alt="Frühere Gespräche durchsuchen und wieder öffnen" width="640">
+
 > **Gut zu wissen:** Damit du nicht bei jedem Schritt etwas bestätigen musst, darf Claude im Studio selbstständig Dateien anlegen und Befehle ausführen, etwa zum Rendern. Das Studio ist nur auf deinem eigenen Computer und nur über das Symbol „Motion Studio“ erreichbar. Claude hat dabei grundsätzlich dieselben Rechte wie du. Gib Claude deshalb nur Dateien und Webseiten zur Verarbeitung, denen du vertraust. Für ChatGPT (Codex) gilt dasselbe: Es läuft im Studio ohne eigene Sicherheits-Sandbox. Websuche und Erweiterungen sind dafür abgeschaltet.
 
 **Wo ist mein Studio-Ordner?**

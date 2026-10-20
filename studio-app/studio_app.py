@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import media_files as media  # noqa: E402
 import platform_support as ps  # noqa: E402
 from claude_bridge import BusyError, EngineMissingError, StudioBridge  # noqa: E402
+from conversations import ConversationNotFoundError  # noqa: E402
 from engines import ENGINES  # noqa: E402
 from presets import PresetError, PresetStore  # noqa: E402
 from updates import UpdateChecker, UpdateUnavailableError  # noqa: E402
@@ -193,6 +194,8 @@ class StudioHandler(BaseHTTPRequestHandler):
             "/api/presets": lambda: self._send_json({"presets": self.server.presets.list_all()}),
             "/api/presets/export": self._export_presets,
             "/api/update": lambda: self._send_json(self.server.updates.status(force="force" in query)),
+            "/api/conversations": lambda: self._send_json({
+                "conversations": self.server.bridge.list_conversations((query.get("q") or [""])[0][:200])}),
         }
         handler = routes.get(url.path)
         if handler is None:
@@ -236,6 +239,12 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._preset_action(path)
         if path == "/api/update/start":
             return self._start_update()
+        if path == "/api/conversations/open":
+            try:
+                bridge.open_conversation(str(self._read_json().get("id", "")))
+            except ConversationNotFoundError:
+                return self._send_error(HTTPStatus.NOT_FOUND, "Dieses Gespräch gibt es nicht mehr.")
+            return self._send_json({"ok": True})
         if path == "/api/update/ack":
             self.server.updates.acknowledge_result()
             return self._send_json({"ok": True})

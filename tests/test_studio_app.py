@@ -14,6 +14,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "studio-app"))
@@ -177,7 +178,11 @@ class ServerTestCase(unittest.TestCase):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def tearDown(self):
+        # Ein abgebrochener Auftrag schreibt danach noch den Verlauf – erst dann den Temp-Ordner löschen.
         self.server.bridge.stop()
+        deadline = time.time() + WAIT_SECONDS
+        while self.server.bridge.busy and time.time() < deadline:
+            time.sleep(0.1)
         self.server.shutdown()
         self.server.server_close()
         self.temp.cleanup()
@@ -319,8 +324,8 @@ class ChatTests(ServerTestCase):
         self.assertIn("resume=ja", items[6]["text"])
         self.assertIn("modell=gpt-6.1-sol", items[6]["text"])
         saved = json.loads((self.data / "session.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved, {"sessions": {"codex": "test-thread-1"}, "engine": "codex",
-                                 "folder": self.server.bridge.folder})
+        self.assertEqual((saved["sessions"], saved["engine"], saved["folder"]),
+                         ({"codex": "test-thread-1"}, "codex", self.server.bridge.folder))
 
     def test_switching_engine_adds_note_and_keeps_each_session(self):
         self.request("POST", "/api/chat", body={"message": "Erst Claude", "model": "opus"})
@@ -412,6 +417,54 @@ class ChatTests(ServerTestCase):
         self.assertEqual(items[2]["kind"], "note")
         self.assertIn(self.server.bridge.folder, items[2]["text"])
         self.assertTrue((self.studio / "projekte" / self.server.bridge.folder).is_dir())
+
+    def test_reset_archives_and_old_conversation_can_be_found_and_reopened(self):
+        self.request("POST", "/api/chat", body={"message": "Intro für Studio Nord"})
+        self.wait_until_idle()
+        old_folder = self.server.bridge.folder
+        old_id = self.server.bridge.conversation_id
+        self.request("POST", "/api/reset", body={})
+        self.request("POST", "/api/chat", body={"message": "Ganz anderes Thema"})
+        self.wait_until_idle()
+
+        listing = json.loads(self.request("GET", "/api/conversations")[1])["conversations"]
+        self.assertEqual([(c["title"], c["current"]) for c in listing],
+                         [("Ganz anderes Thema", True), ("Intro für Studio Nord", False)])
+        hits = json.loads(self.request("GET", "/api/conversations?q=" + quote("studio nord"))[1])["conversations"]
+        self.assertEqual([c["id"] for c in hits], [old_id])
+        answer_hits = json.loads(self.request("GET", "/api/conversations?q=verstanden")[1])["conversations"]
+        self.assertEqual(len(answer_hits), 2, "auch Antworten der KI werden durchsucht")
+
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": old_id})
+        self.assertEqual(status, 200)
+        items = json.loads(self.request("GET", "/api/state?from=0")[1])["items"]
+        self.assertEqual(items[0]["text"], "Intro für Studio Nord")
+        self.assertEqual(self.server.bridge.folder, old_folder)
+        files = json.loads(self.request("GET", "/api/files")[1])
+        self.assertEqual([f["name"] for f in files["exports"]], ["fake.mp4"])
+        listing = json.loads(self.request("GET", "/api/conversations")[1])["conversations"]
+        self.assertEqual([(c["title"], c["current"]) for c in listing],
+                         [("Intro für Studio Nord", True), ("Ganz anderes Thema", False)])
+
+        self.request("POST", "/api/chat", body={"message": "Weiter am Intro"})
+        items = self.wait_until_idle()
+        self.assertIn("resume=ja", [i for i in items if i["kind"] == "assistant"][-1]["text"])
+        self.assertEqual(self.server.bridge.folder, old_folder)
+
+    def test_open_conversation_is_guarded(self):
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": "../session"})
+        self.assertEqual(status, 404)
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": "gibt-es-nicht"})
+        self.assertEqual(status, 404)
+        self.request("POST", "/api/chat", body={"message": "Erstes"})
+        self.wait_until_idle()
+        first = self.server.bridge.conversation_id
+        self.request("POST", "/api/reset", body={})
+        self.request("POST", "/api/chat", body={"message": "langsam bitte"})
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": first})
+        self.assertEqual(status, 409)
+        status, _, _ = self.request("GET", "/api/conversations", session=False)
+        self.assertEqual(status, 403)
 
     def test_reset_clears_conversation(self):
         self.request("POST", "/api/chat", body={"message": "Hallo"})
@@ -620,6 +673,33 @@ class BrowserTests(ServerTestCase):
                 page.locator(".msg-user", has_text="finale Version von intro_vorschau.mp4").wait_for(
                     timeout=WAIT_SECONDS * 1000)
                 self.assertEqual(page.locator("link[rel=icon]").get_attribute("href"), "/static/favicon.png")
+            finally:
+                browser.close()
+
+    def test_search_and_reopen_old_conversation_in_browser(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        self.request("POST", "/api/chat", body={"message": "Logo-Animation für Café Blau"})
+        self.wait_until_idle()
+        self.request("POST", "/api/reset", body={})
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                page.get_by_role("button", name="Gespräche").click()
+                page.locator("#conversation-search").fill("café")
+                entry = page.locator("#conversation-list li", has_text="Logo-Animation für Café Blau")
+                entry.wait_for(timeout=WAIT_SECONDS * 1000)
+                entry.get_by_role("button", name="Öffnen").click()
+                page.locator(".msg-user", has_text="Logo-Animation für Café Blau").wait_for(timeout=WAIT_SECONDS * 1000)
+                page.locator(".media-card", has_text="fake.mp4").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertTrue(page.locator("#conversations").is_hidden())
+                page.get_by_role("button", name="Gespräche").click()
+                page.locator("#conversation-search").fill("gibt es nicht")
+                page.get_by_text("Keine passenden Gespräche gefunden.").wait_for(timeout=WAIT_SECONDS * 1000)
             finally:
                 browser.close()
 

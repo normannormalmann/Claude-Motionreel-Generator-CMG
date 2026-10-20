@@ -83,7 +83,7 @@ jobs:
               test -f "$HOME/.local/share/applications/motion-studio.desktop" || { echo "Menüeintrag fehlt"; exit 1; }
             fi
           fi
-          for f in studio_app.py claude_bridge.py engines.py stop_studio.py updates.py update_runner.py versions.json platform_support.py media_files.py presets.py static/index.html static/app.js static/presets.js static/favicon.png icon.png config.json; do
+          for f in studio_app.py claude_bridge.py engines.py conversations.py stop_studio.py updates.py update_runner.py versions.json platform_support.py media_files.py presets.py static/index.html static/app.js static/presets.js static/favicon.png icon.png config.json; do
             test -f "$data/app/$f" || test -f "$data/$f" || { echo "Fehlt: $f"; exit 1; }
           done
           "$py" -m unittest discover -s tests -v
