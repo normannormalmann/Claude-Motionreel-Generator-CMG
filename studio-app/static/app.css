@@ -146,6 +146,8 @@ button.small { padding: 4px 12px; font-size: 13px; }
 
 .step { align-self: flex-start; font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; padding: 0 4px; }
 .step::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; transform: translateY(-1px); }
+.step-note { font-style: italic; }
+.step-note::before { background: var(--muted); }
 .step details summary { cursor: pointer; list-style: none; }
 .step details summary::-webkit-details-marker { display: none; }
 .step details pre { margin: 6px 0 0; white-space: pre-wrap; font-size: 12px; max-height: 200px; overflow: auto; background: var(--surface-2); padding: 8px; border-radius: 6px; }

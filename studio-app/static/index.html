@@ -19,8 +19,14 @@
       <label class="model-select">
         <span>Modell</span>
         <select id="model">
-          <option value="opus">Opus – beste Qualität</option>
-          <option value="sonnet">Sonnet – schneller</option>
+          <optgroup label="Claude">
+            <option value="opus">Opus – beste Qualität</option>
+            <option value="sonnet">Sonnet – schneller</option>
+          </optgroup>
+          <optgroup label="ChatGPT (Codex)">
+            <option value="codex-max">GPT-6-Astra – beste Qualität</option>
+            <option value="codex">GPT-6.1-Sol – schneller</option>
+          </optgroup>
         </select>
       </label>
       <button class="ghost" id="open-folder" type="button">Ordner öffnen</button>
@@ -34,13 +40,13 @@
       <div class="messages" id="messages" aria-live="polite">
         <div class="welcome" id="welcome">
           <h2>Was möchtest du heute erstellen?</h2>
-          <p>Beschreibe dein Video in eigenen Worten oder wähle unten eine Vorlage. Claude plant, rendert und prüft das Video. Fertige Videos erscheinen rechts.</p>
+          <p>Beschreibe dein Video in eigenen Worten oder wähle unten eine Vorlage. Die KI plant, rendert und prüft das Video. Fertige Videos erscheinen rechts. Oben unter „Modell“ wählst du zwischen Claude und ChatGPT.</p>
         </div>
       </div>
 
       <div class="working" id="working" hidden>
         <span class="spinner" aria-hidden="true"></span>
-        <span id="working-text">Claude arbeitet …</span>
+        <span id="working-text">Die KI arbeitet …</span>
         <button class="danger small" id="stop" type="button">Abbrechen</button>
       </div>
 
@@ -83,7 +89,7 @@
   <div class="overlay" id="login" hidden>
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
       <h2 id="login-title">Bei Claude anmelden</h2>
-      <p>Damit Claude für dich arbeiten kann, melde dich einmalig mit deinem Claude-Konto an. Dein Browser öffnet sich dafür.</p>
+      <p id="login-intro">Damit Claude für dich arbeiten kann, melde dich einmalig mit deinem Claude-Konto an. Dein Browser öffnet sich dafür.</p>
       <p class="login-status" id="login-status"></p>
       <a class="primary link-button" id="login-link" href="#" target="_blank" rel="noopener" hidden>Anmeldeseite öffnen</a>
       <div class="login-code" id="login-code" hidden>
@@ -113,7 +119,7 @@
         <li><span>Instagram</span><a href="https://www.instagram.com/normanschonherr/" target="_blank" rel="noopener noreferrer">@normanschonherr</a></li>
       </ul>
       <p class="fine">Nutzung auf eigene Gefahr: Claude arbeitet selbstständig auf deinem Computer, und KI-Ergebnisse können fehlerhaft sein. Details im <a href="https://github.com/normannormalmann/Claude-Motionreel-Generator-CMG#haftungsausschluss" target="_blank" rel="noopener noreferrer">Haftungsausschluss</a>.</p>
-      <p class="fine">Claude und Claude Code sind Produkte von Anthropic. CMG ist ein unabhängiges Projekt und steht in keiner Verbindung zu Anthropic.</p>
+      <p class="fine">Claude und Claude Code sind Produkte von Anthropic, ChatGPT und Codex sind Produkte von OpenAI. CMG ist ein unabhängiges Projekt und steht mit keinem der beiden Unternehmen in Verbindung.</p>
       <div class="dialog-actions">
         <button class="primary" id="info-close" type="button">Schließen</button>
       </div>

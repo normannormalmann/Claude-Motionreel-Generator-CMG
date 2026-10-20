@@ -13,14 +13,18 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "studio-app"))
 os.environ["CMG_CLAUDE_BIN"] = str(ROOT / "tests" / "fake_claude.py")
+os.environ["CMG_CODEX_BIN"] = str(ROOT / "tests" / "fake_codex.py")
 
+import engines  # noqa: E402
 import media_files  # noqa: E402
 import studio_app  # noqa: E402
-from claude_bridge import describe_tool  # noqa: E402
+from claude_bridge import StudioBridge  # noqa: E402
+from engines import describe_codex_item, describe_tool, resolve_model, unwrap_shell  # noqa: E402
 
 WAIT_SECONDS = 20
 
@@ -32,6 +36,63 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(describe_tool("Bash", {"command": "ffmpeg -i x", "description": "Video kodieren"})[0],
                          "Führt aus: Video kodieren")
         self.assertEqual(describe_tool("Bash", {"command": ""})[0], "Führt aus: Befehl")
+
+    def test_unwrap_shell_removes_codex_shell_wrappers(self):
+        windows = '"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command "ffmpeg -i a.mp4"'
+        self.assertEqual(unwrap_shell(windows), "ffmpeg -i a.mp4")
+        self.assertEqual(unwrap_shell("/bin/bash -lc 'python render.py --preview'"), "python render.py --preview")
+        self.assertEqual(unwrap_shell("python render.py -c config.json"), "python render.py -c config.json")
+
+    def test_describe_codex_item_translates_steps(self):
+        files = {"type": "file_change", "changes": [{"path": "/s/scene.html", "kind": "add"},
+                                                    {"path": "/s/style.css", "kind": "update"}]}
+        self.assertEqual(describe_codex_item(files)[0], "Erstellt scene.html (+1 weitere)")
+        self.assertEqual(describe_codex_item({"type": "command_execution", "command": "bash -lc 'ls'"})[0],
+                         "Führt aus: ls")
+        self.assertEqual(describe_codex_item({"type": "todo_list", "items": []})[0], "Plant die Arbeitsschritte")
+        self.assertIsNone(describe_codex_item({"type": "reasoning", "text": "..."}))
+        self.assertIsNone(describe_codex_item({"type": "error", "message": "Warnung"}))
+
+    def test_resolve_model_maps_choices_and_falls_back(self):
+        self.assertEqual((resolve_model("codex-max")[0].key, resolve_model("codex-max")[1]), ("codex", "gpt-6-astra"))
+        self.assertEqual((resolve_model("sonnet")[0].key, resolve_model("sonnet")[1]), ("claude", "sonnet"))
+        self.assertEqual((resolve_model("gibt-es-nicht")[0].key, resolve_model("gibt-es-nicht")[1]), ("claude", "opus"))
+
+    def test_codex_auth_status_parsing(self):
+        parse = engines.CodexEngine.parse_auth
+        self.assertTrue(parse(0, "Logged in using ChatGPT", ""))
+        self.assertTrue(parse(0, "", "Logged in using an API key"))
+        self.assertFalse(parse(1, "Not logged in", ""))
+        self.assertFalse(parse(0, "Not logged in", ""))
+
+    def test_claude_auth_status_ignores_stderr_noise(self):
+        parse = engines.ClaudeEngine.parse_auth
+        self.assertTrue(parse(0, '{"loggedIn": true}', "(node:123) Warning: something"))
+        self.assertFalse(parse(0, "[]", ""))
+
+    def test_codex_runs_without_web_search_apps_and_mcp(self):
+        args = engines.CodexEngine().chat_args("gpt-6.1-sol", None)
+        for value in ('web_search="disabled"', "features.apps=false", "mcp_servers={}"):
+            self.assertEqual(args[args.index(value) - 1], "-c")
+
+    def test_session_ids_are_validated(self):
+        self.assertTrue(engines.valid_session_id("00000000-1111-4222-8333-444444444444"))
+        self.assertFalse(engines.valid_session_id("--dangerous-flag"))
+        self.assertFalse(engines.valid_session_id("a b c d e f g h"))
+        self.assertFalse(engines.valid_session_id(None))
+
+    def test_old_single_session_file_is_migrated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            (Path(temp) / "session.json").write_text(json.dumps({"session_id": "alt-session-1"}), encoding="utf-8")
+            bridge = StudioBridge(temp, temp)
+            self.assertEqual(bridge.sessions, {"claude": "alt-session-1"})
+            self.assertEqual(bridge.engine_key, "claude")
+
+    def test_invalid_stored_session_ids_are_dropped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            data = {"sessions": {"codex": "--evil", "claude": "test-session-1"}, "engine": "codex"}
+            (Path(temp) / "session.json").write_text(json.dumps(data), encoding="utf-8")
+            self.assertEqual(StudioBridge(temp, temp).sessions, {"claude": "test-session-1"})
 
     def test_safe_upload_name_strips_paths_hidden_files_and_devices(self):
         self.assertEqual(media_files.safe_upload_name("..%2F..%2Fmusic.mp3"), "music.mp3")
@@ -202,6 +263,73 @@ class ChatTests(ServerTestCase):
         self.assertEqual(items[-1]["kind"], "error")
         self.assertIn("abgebrochen", items[-1]["text"])
 
+    def test_codex_chat_runs_and_resumes_thread(self):
+        status, _, _ = self.request("POST", "/api/chat", body={"message": "Hallo Codex", "model": "codex-max"})
+        self.assertEqual(status, 200)
+        items = self.wait_until_idle()
+        self.assertEqual([item["kind"] for item in items], ["user", "assistant", "tool", "tool", "done"])
+        self.assertIn("resume=nein", items[1]["text"])
+        self.assertIn("modell=gpt-6-astra", items[1]["text"])
+        self.assertEqual(items[2]["text"], "Führt aus: ffmpeg -version")
+        self.assertEqual(items[3]["text"], "Erstellt fake.mp4")
+
+        self.request("POST", "/api/chat", body={"message": "Weiter", "model": "codex"})
+        items = self.wait_until_idle()
+        self.assertIn("resume=ja", items[6]["text"])
+        self.assertIn("modell=gpt-6.1-sol", items[6]["text"])
+        saved = json.loads((self.data / "session.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved, {"sessions": {"codex": "test-thread-1"}, "engine": "codex"})
+
+    def test_switching_engine_adds_note_and_keeps_each_session(self):
+        self.request("POST", "/api/chat", body={"message": "Erst Claude", "model": "opus"})
+        self.wait_until_idle()
+        self.request("POST", "/api/chat", body={"message": "Dann Codex", "model": "codex"})
+        items = self.wait_until_idle()
+        self.assertEqual(items[4]["kind"], "note")
+        self.assertIn("Codex kennt den bisherigen Verlauf", items[4]["text"])
+        self.request("POST", "/api/chat", body={"message": "Wieder Claude", "model": "sonnet"})
+        items = self.wait_until_idle()
+        self.assertIn("resume=ja", [i for i in items if i["kind"] == "assistant"][-1]["text"])
+
+    def test_codex_login_error_is_flagged_with_engine(self):
+        self.request("POST", "/api/chat", body={"message": "bitte fehler", "model": "codex"})
+        items = self.wait_until_idle()
+        self.assertEqual(items[-1]["kind"], "error")
+        self.assertTrue(items[-1]["needs_login"])
+        self.assertEqual(items[-1]["engine"], "codex")
+        self.assertIn("401", items[-1]["text"])
+
+    def test_missing_codex_is_reported(self):
+        with mock.patch.object(engines.ps, "codex_command", return_value=None):
+            status, data, _ = self.request("POST", "/api/chat", body={"message": "Hallo", "model": "codex"})
+            self.assertEqual(status, 503)
+            self.assertIn("Codex wurde nicht gefunden", json.loads(data)["error"])
+            _, data, _ = self.request("GET", "/api/auth?engine=codex&force=1")
+            self.assertFalse(json.loads(data)["installed"])
+        _, data, _ = self.request("GET", "/api/state?from=0")
+        self.assertFalse(json.loads(data)["busy"])
+
+    def test_auth_and_login_per_engine(self):
+        _, data, _ = self.request("GET", "/api/auth?engine=codex&force=1")
+        self.assertEqual(json.loads(data), {"engine": "codex", "installed": True, "logged_in": True})
+        self.request("POST", "/api/login", body={"engine": "codex"})
+        deadline = time.time() + WAIT_SECONDS
+        while time.time() < deadline:
+            _, data, _ = self.request("GET", "/api/login")
+            login = json.loads(data)
+            if login["state"] != "running":
+                break
+            time.sleep(0.2)
+        self.assertEqual(login["state"], "done")
+        self.assertEqual(login["engine"], "codex")
+        self.assertTrue(login["url"].startswith("https://auth.openai.com/"))
+
+    def test_unknown_engine_is_rejected(self):
+        status, _, _ = self.request("GET", "/api/auth?engine=gibtsnicht")
+        self.assertEqual(status, 400)
+        status, _, _ = self.request("POST", "/api/login", body={"engine": "gibtsnicht"})
+        self.assertEqual(status, 400)
+
     def test_reset_clears_conversation(self):
         self.request("POST", "/api/chat", body={"message": "Hallo"})
         self.wait_until_idle()
@@ -266,6 +394,28 @@ class BrowserTests(ServerTestCase):
                 self.assertTrue(page.locator("#info").is_hidden())
                 page.reload()
                 page.locator(".msg-assistant").first.wait_for(timeout=WAIT_SECONDS * 1000)
+            finally:
+                browser.close()
+
+    def test_codex_model_can_be_chosen_and_used(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                page.locator("#model").select_option("codex-max")
+                page.locator("#prompt").fill("Ein kurzes Intro")
+                page.get_by_role("button", name="Senden").click()
+                page.locator(".done-note").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertIn("Codex:", page.locator(".msg-assistant").first.inner_text())
+                self.assertIn("Erstellt fake.mp4", page.locator(".step").all_inner_texts())
+                self.assertTrue(page.locator("#login").is_hidden())
+                page.reload()
+                self.assertEqual(page.locator("#model").input_value(), "codex-max")
             finally:
                 browser.close()
 

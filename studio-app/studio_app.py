@@ -1,4 +1,4 @@
-"""Motion Studio – lokale Oberfläche für Claude Code.
+"""Motion Studio – lokale Oberfläche für Claude Code und Codex.
 
 Startet einen kleinen Webserver auf 127.0.0.1 und öffnet ihn im Browser.
 Nur die Python-Standardbibliothek wird benötigt.
@@ -27,7 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import media_files as media  # noqa: E402
 import platform_support as ps  # noqa: E402
-from claude_bridge import BusyError, ClaudeMissingError, StudioBridge  # noqa: E402
+from claude_bridge import BusyError, EngineMissingError, StudioBridge  # noqa: E402
+from engines import ENGINES  # noqa: E402
 from presets import PresetError, PresetStore  # noqa: E402
 
 IDLE_SHUTDOWN_SECONDS = 180
@@ -48,6 +49,10 @@ LOCKED_PAGE = (
     "<h1>Motion Studio</h1><p>Bitte öffne das Studio über das Symbol <strong>„Motion Studio“</strong> "
     "auf deinem Desktop bzw. Schreibtisch.</p></body>"
 )
+
+
+class UnknownEngineError(Exception):
+    """Die Anfrage nennt einen Dienst, den das Studio nicht kennt."""
 
 
 class StudioServer(ThreadingHTTPServer):
@@ -160,7 +165,8 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._send_media(url.path)
         routes = {
             "/api/state": lambda: self._state(query),
-            "/api/auth": lambda: self._send_json(self.server.bridge.auth_status(force="force" in query)),
+            "/api/auth": lambda: self._send_json(self.server.bridge.auth_status(
+                self._engine_param((query.get("engine") or ["claude"])[0]), force="force" in query)),
             "/api/files": lambda: self._send_json({
                 root: media.list_media(self.server.studio_dir, root) for root in media.MEDIA_ROOTS
             }),
@@ -173,6 +179,8 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
         try:
             return handler()
+        except UnknownEngineError:
+            return self._send_error(HTTPStatus.BAD_REQUEST, "Unbekannter Dienst.")
         except PresetError as error:
             return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, str(error))
 
@@ -185,11 +193,20 @@ class StudioHandler(BaseHTTPRequestHandler):
         try:
             return self._dispatch_post(url.path)
         except BusyError:
-            return self._send_error(HTTPStatus.CONFLICT, "Claude arbeitet gerade noch. Bitte warten oder abbrechen.")
-        except ClaudeMissingError:
-            return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.")
+            return self._send_error(HTTPStatus.CONFLICT, "Es läuft gerade noch ein Auftrag. Bitte warten oder abbrechen.")
+        except EngineMissingError as error:
+            return self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "{} wurde nicht gefunden. Bitte den Installer "
+                                    "erneut starten.".format(error.engine.label))
+        except UnknownEngineError:
+            return self._send_error(HTTPStatus.BAD_REQUEST, "Unbekannter Dienst.")
         except PresetError as error:
             return self._send_error(HTTPStatus.BAD_REQUEST, str(error))
+
+    @staticmethod
+    def _engine_param(value):
+        if value not in ENGINES:
+            raise UnknownEngineError(value)
+        return value
 
     def _dispatch_post(self, path):
         bridge = self.server.bridge
@@ -210,7 +227,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         elif path == "/api/open":
             self._open_folder(self._read_json().get("target"))
         elif path == "/api/login":
-            bridge.start_login()
+            bridge.start_login(self._engine_param(str(self._read_json().get("engine", "claude"))))
         elif path == "/api/login/code":
             bridge.send_login_code(str(self._read_json().get("code", "")))
         elif path != "/api/ping":

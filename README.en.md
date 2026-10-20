@@ -25,7 +25,7 @@ This package installs everything you need for that. You don't need any technical
 
 - A computer running **Windows 10/11**, **macOS** or **Linux** (Ubuntu, Debian, Fedora, Arch)
 - An **internet connection** and about **3 GB of free disk space**
-- A **Claude account with access to Claude Code**, for example Claude Pro or Max
+- A **Claude account with access to Claude Code**, for example Claude Pro or Max, **or** a **ChatGPT account with Codex access**, for example ChatGPT Plus or Pro
 - About **15–30 minutes**. Most of it runs on its own.
 
 ---
@@ -96,7 +96,7 @@ When asked for your password, type it and press Enter. Nothing appears while you
 
 Drag your own music, logos or images into the **"Eigene Dateien"** (your files) box on the right. **"Neues Gespräch"** (new conversation) starts a new project. Your videos are kept.
 
-> **Good to know:** So you don't have to confirm every step, Claude may create files and run commands (for example to render) on its own in the studio. The studio can only be reached from your own computer, via the "Motion Studio" icon. Claude basically has the same permissions as you, so only give it files and web pages you trust.
+> **Good to know:** So you don't have to confirm every step, Claude may create files and run commands (for example to render) on its own in the studio. The studio can only be reached from your own computer, via the "Motion Studio" icon. Claude basically has the same permissions as you, so only give it files and web pages you trust. The same applies to ChatGPT (Codex): in the studio it runs without its own security sandbox, with web search and extensions turned off.
 
 The template buttons are in German. Here's an English request you can paste instead:
 
@@ -124,7 +124,22 @@ Inside you'll find:
 - `assets`: put your own music, logos or images here
 - `BEISPIEL-PROMPTS.md`: more example requests
 - `presets.json`: your own templates
-- `CLAUDE.md`: Claude's working rules. You can edit them.
+- `CLAUDE.md`: the AI's working rules. They apply to both Claude and ChatGPT. You can edit them.
+
+---
+
+## Using ChatGPT instead of Claude
+
+Under **"Modell"** (model) at the top right, you choose who builds your video:
+
+| Choice | Service | Sign-in |
+|---|---|---|
+| Opus, Sonnet | Claude (Claude Code) | Claude account, e.g. Pro or Max |
+| GPT-6-Astra, GPT-6.1-Sol | ChatGPT (via OpenAI Codex) | ChatGPT account, e.g. Plus or Pro |
+
+The first time you pick a GPT model, the studio asks you to sign in with ChatGPT. You don't need an API key. Usage counts against your ChatGPT plan's limits.
+
+You can also switch in the middle of a conversation. The new service doesn't know the conversation so far, though. Briefly tell it what you're working on, or start a **"Neues Gespräch"** (new conversation).
 
 ---
 
@@ -150,7 +165,8 @@ Your own templates are stored as `presets.json` in the studio folder, so they're
 | Program | What it's for |
 |---|---|
 | **Claude Code** | The AI that plans and builds your videos |
-| **Motion Studio** | The browser interface you use to work with Claude |
+| **Codex** (optional) | Lets you use ChatGPT instead of Claude. Installed via Node.js. |
+| **Motion Studio** | The browser interface you use to work with the AI |
 | **Python** with Playwright, Pillow and NumPy | Drives the rendering of individual frames |
 | **Chromium** (via Playwright) | An invisible browser that captures the animation frame by frame |
 | **FFmpeg** | Combines the frames into an MP4 file |
@@ -178,6 +194,8 @@ At the end, the installer renders a short test animation to confirm that everyth
 | The video shows blank or wrong frames | Ask Claude to check `window.seek()`, image and font loading, and the capture timing. |
 | The video feels hectic | Ask Claude for fewer scenes, longer holds and calmer transitions. |
 | Fedora: the self-test reports missing H.264 | Enable [RPM Fusion](https://rpmfusion.org/Configuration) and install `ffmpeg` from it. |
+| "Codex wurde nicht gefunden" (Codex not found) | Run the installer again. It sets up Codex too. Codex needs Node.js. |
+| ChatGPT reports a usage limit | Your ChatGPT plan has used up its Codex allowance. Wait until it resets, or switch to Claude at the top. |
 
 ---
 
@@ -210,9 +228,9 @@ You use this project at your own risk. The software is provided as is, without w
 - **Third-party software:** The installer downloads and installs software from other providers, including Claude Code, Python, Playwright with Chromium, FFmpeg, Node.js, Git and Homebrew. Their own licenses and terms apply. I take no responsibility for how they work, their security or their availability.
 - **AI that acts on its own:** In the studio, Claude creates and changes files and runs commands on your computer on its own. AI results can be wrong or unexpected. Back up important data regularly and only give Claude files and web pages you trust.
 - **Costs and account:** Claude requires your own account with a suitable plan or API billing. Any resulting costs and usage limits are your responsibility.
-- **Data transfer:** Your requests, and the content Claude reads to fulfil them, are sent to Anthropic for processing. Anthropic's privacy policy and terms of use apply. Don't process confidential data or other people's personal data without permission.
+- **Data transfer:** Your requests, and the content the AI reads to fulfil them, are sent to Anthropic for processing, or to OpenAI if you choose a GPT model. The provider's privacy policy and terms of use apply. Don't process confidential data or other people's personal data without permission.
 - **Rights to content:** You are responsible for holding the rights to any content you use, such as music, logos, images and fonts. The same applies to how you use the videos you create.
-- **Not affiliated with Anthropic:** Claude and Claude Code are trademarks or products of Anthropic. This project is independent and is not endorsed or reviewed by Anthropic.
+- **Not affiliated with Anthropic or OpenAI:** Claude and Claude Code are trademarks or products of Anthropic; ChatGPT and Codex are products of OpenAI. This project is independent and is not endorsed or reviewed by either company.
 
 To the extent permitted by law, liability for damages arising from use is excluded. This does not affect liability for intent and gross negligence, for injury to life, body or health, or under mandatory statutory provisions such as product liability law.
 
