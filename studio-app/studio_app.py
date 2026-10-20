@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import media_files as media  # noqa: E402
 import platform_support as ps  # noqa: E402
 from claude_bridge import BusyError, EngineMissingError, StudioBridge  # noqa: E402
+from conversations import ConversationNotFoundError  # noqa: E402
 from engines import ENGINES  # noqa: E402
 from presets import PresetError, PresetStore  # noqa: E402
 from updates import UpdateChecker, UpdateUnavailableError  # noqa: E402
@@ -41,13 +42,18 @@ MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 MAX_JSON_BYTES = 200 * 1024
 COOKIE_NAME = "motion_studio"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_FILES = {"app.css": "text/css", "app.js": "text/javascript", "presets.js": "text/javascript"}
+STATIC_FILES = {
+    "app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
+    "presets.js": "text/javascript; charset=utf-8",
+    "favicon.png": "image/png", "apple-touch-icon.png": "image/png",
+}
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 PAGE_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
             "media-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 MEDIA_CSP = "sandbox; default-src 'none'"
 LOCKED_PAGE = (
     "<!doctype html><meta charset='utf-8'><title>Motion Studio</title>"
+    "<link rel='icon' type='image/png' href='/static/favicon.png'>"
     "<body style='font-family:system-ui;max-width:32rem;margin:15vh auto;padding:0 16px'>"
     "<h1>Motion Studio</h1><p>Bitte öffne das Studio über das Symbol <strong>„Motion Studio“</strong> "
     "auf deinem Desktop bzw. Schreibtisch.</p></body>"
@@ -166,10 +172,13 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._send_json({"app": "motion-studio"})
         if url.path == "/":
             return self._serve_index(query)
+        if url.path == "/favicon.ico":
+            # Manche Browser fragen ohne Blick ins HTML direkt danach.
+            return self._send_bytes((STATIC_DIR / "favicon.png").read_bytes(), "image/png")
         if url.path.startswith("/static/"):
             name = url.path[len("/static/"):]
             if name in STATIC_FILES:
-                return self._send_bytes((STATIC_DIR / name).read_bytes(), STATIC_FILES[name] + "; charset=utf-8")
+                return self._send_bytes((STATIC_DIR / name).read_bytes(), STATIC_FILES[name])
             return self._send_error(HTTPStatus.NOT_FOUND, "Nicht gefunden")
         if not self._has_session():
             return self._send_error(HTTPStatus.FORBIDDEN, "Zugriff verweigert")
@@ -180,13 +189,13 @@ class StudioHandler(BaseHTTPRequestHandler):
             "/api/state": lambda: self._state(query),
             "/api/auth": lambda: self._send_json(self.server.bridge.auth_status(
                 self._engine_param((query.get("engine") or ["claude"])[0]), force="force" in query)),
-            "/api/files": lambda: self._send_json({
-                root: media.list_media(self.server.studio_dir, root) for root in media.MEDIA_ROOTS
-            }),
+            "/api/files": self._list_files,
             "/api/login": lambda: self._send_json(self.server.bridge.login_snapshot()),
             "/api/presets": lambda: self._send_json({"presets": self.server.presets.list_all()}),
             "/api/presets/export": self._export_presets,
             "/api/update": lambda: self._send_json(self.server.updates.status(force="force" in query)),
+            "/api/conversations": lambda: self._send_json({
+                "conversations": self.server.bridge.list_conversations((query.get("q") or [""])[0][:200])}),
         }
         handler = routes.get(url.path)
         if handler is None:
@@ -230,6 +239,12 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._preset_action(path)
         if path == "/api/update/start":
             return self._start_update()
+        if path == "/api/conversations/open":
+            try:
+                bridge.open_conversation(str(self._read_json().get("id", "")))
+            except ConversationNotFoundError:
+                return self._send_error(HTTPStatus.NOT_FOUND, "Dieses Gespräch gibt es nicht mehr.")
+            return self._send_json({"ok": True})
         if path == "/api/update/ack":
             self.server.updates.acknowledge_result()
             return self._send_json({"ok": True})
@@ -317,9 +332,26 @@ class StudioHandler(BaseHTTPRequestHandler):
             return self._send_json(bridge.wait_for_items(start, LONG_POLL_SECONDS))
         return self._send_json(bridge.snapshot(start))
 
+    def _list_files(self):
+        """Rechts erscheinen nur die Ergebnisse des aktuellen Gesprächs."""
+        bridge = self.server.bridge
+        folder = bridge.folder
+        if folder:
+            exports = media.list_media(self.server.studio_dir, "exports", folder)
+        elif bridge.items:
+            # Gespräch aus einer älteren Version ohne eigenen Ordner: dessen Videos liegen direkt in exports.
+            exports = media.list_media(self.server.studio_dir, "exports", top_level_only=True)
+        else:
+            exports = []
+        return self._send_json({"exports": exports, "assets": media.list_media(self.server.studio_dir, "assets"),
+                                "conversation": folder})
+
     def _open_folder(self, target):
         folder = self.server.studio_dir
-        if target in media.MEDIA_ROOTS:
+        conversation = self.server.bridge.folder_path
+        if target == "conversation":
+            folder = conversation or folder / "exports"
+        elif target in media.MEDIA_ROOTS:
             folder = folder / target
         folder.mkdir(parents=True, exist_ok=True)
         ps.open_in_file_manager(folder)

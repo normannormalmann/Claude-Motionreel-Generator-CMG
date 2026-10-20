@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import platform_support as ps
+from conversations import ConversationArchive, new_conversation_id, valid_id
 from engines import RunState, engine_for, resolve_model, valid_session_id
 
 MAX_ITEMS = 600
@@ -17,6 +18,23 @@ MAX_STDERR_CHARS = 4000
 AUTH_CACHE_SECONDS = 30
 LOGIN_HINT = re.compile(r"log ?in|logged out|api key|authenticat|anmeld|unauthori[sz]ed|oauth", re.IGNORECASE)
 URL_PATTERN = re.compile(r"https://\S+")
+FOLDER_PATTERN = re.compile(r"\w[\w-]{0,79}")
+FOLDER_SEPARATORS = re.compile(r"[^\w]+")
+MAX_FOLDER_TITLE = 40
+
+
+def conversation_folder_name(message, existing_dirs, now=None):
+    """Ordnername für ein neues Gespräch, z. B. "2026-10-20_1412_Showreel-für-Studio-Nord"."""
+    first_line = (message.strip().splitlines() or [""])[0]
+    title = FOLDER_SEPARATORS.sub("-", first_line).strip("-_")
+    if len(title) > MAX_FOLDER_TITLE:
+        title = title[:MAX_FOLDER_TITLE].rsplit("-", 1)[0] or title[:MAX_FOLDER_TITLE]
+    stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(now))
+    base = "{}_{}".format(stamp, title or "Gespraech")
+    name, number = base, 2
+    while any((Path(folder) / name).exists() for folder in existing_dirs):
+        name, number = "{}-{}".format(base, number), number + 1
+    return name
 
 
 class BusyError(Exception):
@@ -44,7 +62,13 @@ class StudioBridge:
         self._login_lines = []
         self._login_state = "idle"
         self.items = self._load_json("chat.json", [])
-        self.sessions, self.engine_key = self._load_sessions()
+        self.sessions, self.engine_key, self.folder = self._load_sessions()
+        session = self._load_json("session.json", {})
+        session = session if isinstance(session, dict) else {}
+        self.conversation_id = session.get("id") if valid_id(session.get("id")) else None
+        self.updated = session.get("updated") if isinstance(session.get("updated"), (int, float)) else 0
+        self.archive = ConversationArchive(data_dir)
+        self.epoch = 0
         self.busy = False
         self._stopped = False
 
@@ -66,7 +90,9 @@ class StudioBridge:
             sessions = {"claude": data.get("session_id")}
             engine_key = "claude" if data.get("session_id") else None
         sessions = {key: value for key, value in sessions.items() if valid_session_id(value)}
-        return sessions, engine_key
+        folder = data.get("folder")
+        folder = folder if isinstance(folder, str) and FOLDER_PATTERN.fullmatch(folder) else None
+        return sessions, engine_key, folder
 
     def _save_json(self, name, data):
         target = self.data_dir / name
@@ -77,18 +103,32 @@ class StudioBridge:
     def _persist(self):
         self.items = self.items[-MAX_ITEMS:]
         self._save_json("chat.json", self.items)
-        self._save_json("session.json", {"sessions": self.sessions, "engine": self.engine_key})
+        self._save_json("session.json", {"sessions": self.sessions, "engine": self.engine_key, "folder": self.folder,
+                                         "id": self.conversation_id, "updated": self.updated})
 
     def _add(self, item):
         with self._lock:
             self.items.append(item)
             self._lock.notify_all()
 
+    @property
+    def exports_dir(self):
+        return self.studio_dir / "exports"
+
+    @property
+    def projects_dir(self):
+        return self.studio_dir / "projekte"
+
+    @property
+    def folder_path(self):
+        """Ordner der Ergebnisse dieses Gesprächs (oder None vor dem ersten Auftrag)."""
+        return self.exports_dir / self.folder if self.folder else None
+
     # ------------------------------------------------------------ Status
 
     def snapshot(self, start):
         with self._lock:
-            return {"items": self.items[start:], "next": len(self.items), "busy": self.busy}
+            return {"items": self.items[start:], "next": len(self.items), "busy": self.busy, "epoch": self.epoch}
 
     def wait_for_items(self, start, timeout):
         with self._lock:
@@ -132,12 +172,21 @@ class StudioBridge:
                 self.items.append({"kind": "note", "text": "Ab hier arbeitet {0}. {0} kennt den bisherigen "
                                    "Verlauf dieses Gesprächs nicht.".format(engine.label)})
             self.engine_key = engine.key
+            if not self.folder:
+                self.folder = conversation_folder_name(message, (self.exports_dir, self.projects_dir))
+                if self.items:
+                    # Gespräch aus einer älteren Version: Bisherige Videos liegen direkt in exports.
+                    self.items.append({"kind": "note", "text": "Neue Videos dieses Gesprächs landen ab jetzt im "
+                                       "Ordner exports/{}.".format(self.folder)})
+            self._ensure_conversation_id()
             self.items.append({"kind": "user", "text": message})
             self._lock.notify_all()
 
-        args = command + engine.chat_args(model, self.sessions.get(engine.key))
         session_flags = {} if ps.IS_WINDOWS else {"start_new_session": True}
         try:
+            for base in (self.exports_dir, self.projects_dir):
+                (base / self.folder).mkdir(parents=True, exist_ok=True)
+            args = command + engine.chat_args(model, self.sessions.get(engine.key), self.folder)
             self._process = subprocess.Popen(
                 args, cwd=str(self.studio_dir), env=ps.tool_environment(),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -197,6 +246,7 @@ class StudioBridge:
     def _finish(self, item):
         with self._lock:
             self.items.append(item)
+            self.updated = time.time()
             self.busy = False
             self._process = None
             self._stopped = False
@@ -223,14 +273,63 @@ class StudioBridge:
                 process.terminate()
 
     def reset(self):
+        """Beginnt ein neues Gespräch; das bisherige wandert ins Archiv."""
         with self._lock:
             if self.busy:
                 raise BusyError()
-            self.items = []
-            self.sessions = {}
-            self.engine_key = None
-            self._persist()
-            self._lock.notify_all()
+            self._archive_current()
+            self._load_record({"items": [], "sessions": {}, "engine": None, "folder": None, "id": None, "updated": 0})
+
+    # ------------------------------------------------------------ Gesprächsarchiv
+
+    def _ensure_conversation_id(self):
+        """Jedes Gespräch bekommt eine eigene Kennung, die im Archiv noch nicht vergeben ist."""
+        if not self.conversation_id:
+            self.conversation_id = self.archive.unique_id(new_conversation_id(self.folder))
+
+    def _current_record(self):
+        if not self.items:
+            return None
+        self._ensure_conversation_id()
+        return {"id": self.conversation_id, "items": list(self.items), "sessions": dict(self.sessions),
+                "engine": self.engine_key, "folder": self.folder, "updated": self.updated or time.time()}
+
+    def _archive_current(self):
+        record = self._current_record()
+        if record:
+            self.archive.save(record)
+
+    def _load_record(self, record):
+        sessions = record.get("sessions") if isinstance(record.get("sessions"), dict) else {}
+        folder = record.get("folder")
+        self.items = [item for item in record.get("items") or [] if isinstance(item, dict)]
+        self.sessions = {key: value for key, value in sessions.items() if valid_session_id(value)}
+        self.engine_key = record.get("engine") if record.get("engine") in ("claude", "codex") else None
+        self.folder = folder if isinstance(folder, str) and FOLDER_PATTERN.fullmatch(folder) else None
+        self.conversation_id = record.get("id") if valid_id(record.get("id")) else None
+        self.updated = record.get("updated") if isinstance(record.get("updated"), (int, float)) else 0
+        self.epoch += 1  # andere offene Browser-Tabs laden das Gespräch dann neu
+        self._persist()
+        self._lock.notify_all()
+
+    def list_conversations(self, query=""):
+        with self._lock:
+            current = self._current_record()
+        # Das Durchsuchen der Archivdateien darf laufende Aufträge nicht ausbremsen.
+        return self.archive.search(query, current)
+
+    def open_conversation(self, conversation_id):
+        """Holt ein archiviertes Gespräch zurück; das aktuelle wird vorher archiviert."""
+        with self._lock:
+            if self.busy:
+                raise BusyError()
+            if conversation_id == self.conversation_id and self.items:
+                self.archive.remove(conversation_id)  # Überbleibsel, falls das Studio mittendrin beendet wurde
+                return
+            record = self.archive.load(conversation_id)
+            self._archive_current()
+            self._load_record(record)
+            self.archive.remove(conversation_id)
 
     # ------------------------------------------------------------ Anmeldung
 

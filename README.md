@@ -85,14 +85,19 @@ Wenn du nach deinem Passwort gefragt wirst, gib es ein und drücke Enter. Beim T
 1. Doppelklicke auf **„Motion Studio“** auf deinem Schreibtisch bzw. Desktop. Auf dem Mac findest du es auch im Finder unter **Programme**. Das Studio öffnet sich in deinem Browser.
 2. Beim ersten Start klickst du auf **„Jetzt anmelden“** und meldest dich mit deinem Claude-Konto an.
 3. Klicke unten auf eine Vorlage, z. B. **„Showreel“**, oder beschreibe dein Video in eigenen Worten. Klicke dann auf **„Senden“**.
-4. Claude plant, rendert und prüft das Video. Du siehst links, woran Claude gerade arbeitet. Fertige Videos erscheinen rechts und lassen sich direkt abspielen.
+4. Claude plant, rendert und prüft das Video. Du siehst links, woran Claude gerade arbeitet. Zuerst entsteht immer nur eine schnelle **Vorschau** in niedriger Auflösung. Sie erscheint rechts und lässt sich direkt abspielen.
 5. Für Änderungen schreibst du einfach weiter, z. B. „Mach die zweite Szene langsamer“.
+6. Gefällt dir die Vorschau, klickst du rechts auf **„Finale Version erstellen“**. Erst dann wird das Video in voller Auflösung gerendert.
 
 <img src="docs/images/anmeldung.png" alt="Anmeldefenster im Motion Studio" width="640">
 
 <sub>Beim ersten Start meldest du dich direkt im Studio bei Claude an.</sub>
 
 Eigene Musik, Logos oder Bilder ziehst du rechts in das Feld **„Eigene Dateien“**. Mit **„Neues Gespräch“** beginnst du ein neues Projekt. Deine Videos bleiben dabei erhalten.
+
+**Frühere Gespräche:** Über **„Gespräche“** oben findest du alle bisherigen Gespräche. Das Suchfeld durchsucht Titel und alle Nachrichten, auch die Antworten der KI. Mit **„Öffnen“** machst du genau dort weiter, wo du aufgehört hast, mit dem Verlauf und den Videos dieses Gesprächs.
+
+<img src="docs/images/gespraeche.png" alt="Frühere Gespräche durchsuchen und wieder öffnen" width="640">
 
 > **Gut zu wissen:** Damit du nicht bei jedem Schritt etwas bestätigen musst, darf Claude im Studio selbstständig Dateien anlegen und Befehle ausführen, etwa zum Rendern. Das Studio ist nur auf deinem eigenen Computer und nur über das Symbol „Motion Studio“ erreichbar. Claude hat dabei grundsätzlich dieselben Rechte wie du. Gib Claude deshalb nur Dateien und Webseiten zur Verarbeitung, denen du vertraust. Für ChatGPT (Codex) gilt dasselbe: Es läuft im Studio ohne eigene Sicherheits-Sandbox. Websuche und Erweiterungen sind dafür abgeschaltet.
 
@@ -106,7 +111,8 @@ Eigene Musik, Logos oder Bilder ziehst du rechts in das Feld **„Eigene Dateien
 
 Darin findest du:
 
-- `exports`: deine fertigen Videos
+- `exports`: deine Videos, mit einem eigenen Unterordner pro Gespräch. Rechts im Studio siehst du nur die Videos des aktuellen Gesprächs.
+- `projekte`: die Quelldateien der Animationen, ebenfalls pro Gespräch
 - `assets`: hier legst du eigene Musik, Logos oder Bilder ab
 - `BEISPIEL-PROMPTS.md`: weitere Beispiel-Aufträge
 - `presets.json`: deine eigenen Vorlagen

@@ -1,11 +1,13 @@
 """Simuliert die Claude-Code-CLI für Tests (stream-json-Ausgabe, auth-Befehle)."""
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
 
 SESSION_ID = "test-session-1"
+FOLDER_HINT = re.compile(r"exports/([\w-]+)/")
 
 
 def emit(event):
@@ -24,15 +26,18 @@ def main():
 
     message = sys.stdin.read()
     resumed = "--resume" in args
+    # Wie das echte Claude: Ergebnisse in den Gesprächsordner, den das Studio vorgibt.
+    match = FOLDER_HINT.search(" ".join(args))
+    folder = match.group(1) if match else "ohne-ordner"
     emit({"type": "system", "subtype": "init", "session_id": SESSION_ID})
     if "langsam" in message:
         time.sleep(30)
     emit({"type": "assistant", "message": {"content": [
         {"type": "text", "text": "Verstanden: **{}** (resume={})".format(message.strip()[:40], "ja" if resumed else "nein")},
-        {"type": "tool_use", "name": "Write", "input": {"file_path": "exports/fake.mp4"}},
+        {"type": "tool_use", "name": "Write", "input": {"file_path": "exports/{}/fake.mp4".format(folder)}},
     ]}})
-    exports = Path.cwd() / "exports"
-    exports.mkdir(exist_ok=True)
+    exports = Path.cwd() / "exports" / folder
+    exports.mkdir(parents=True, exist_ok=True)
     (exports / "fake.mp4").write_bytes(b"\x00" * 2048)
     if "fehler" in message:
         emit({"type": "result", "subtype": "error_during_execution", "is_error": True,

@@ -7,6 +7,7 @@
   const MAX_THUMBS = 9;
   const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
   const UPDATE_GIVE_UP_MS = 30 * 60 * 1000;
+  const SEARCH_DELAY_MS = 250;
   const DEFAULT_MODEL = 'opus';
   const ENGINES = {
     claude: {
@@ -29,6 +30,7 @@
   const state = {
     next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null,
     loginTimer: null, loginEngine: 'claude', runEngine: null, assets: [], update: null, updating: false,
+    chatGeneration: 0, searchTimer: null, epoch: null,
   };
 
   const engineOf = (model) => (model.startsWith('codex') ? 'codex' : 'claude');
@@ -163,10 +165,31 @@
     $('working-text').textContent = `${label} arbeitet … ${clock}`;
   }
 
+  // Zeigt das (neue oder wieder geöffnete) Gespräch von vorn; laufende Abfragen des alten zählen nicht mehr.
+  function reloadConversation() {
+    state.chatGeneration += 1;
+    state.epoch = null;
+    $('messages').replaceChildren($('welcome'));
+    $('welcome').hidden = false;
+    state.next = 0;
+    state.knownVideos = null;
+    refreshFiles();
+    if (state.wake) state.wake();
+  }
+
   async function pollLoop() {
     for (;;) {
       try {
+        const generation = state.chatGeneration;
         const data = await api(`/api/state?from=${state.next}${state.busy ? '&wait=1' : ''}`);
+        if (generation !== state.chatGeneration) continue;
+        // Ein anderer Tab hat ein neues Gespräch begonnen oder ein altes geöffnet.
+        if (state.epoch !== null && data.epoch !== state.epoch) {
+          state.epoch = data.epoch;
+          reloadConversation();
+          continue;
+        }
+        state.epoch = data.epoch;
         data.items.forEach(renderItem);
         state.next = data.next;
         setBusy(data.busy);
@@ -181,19 +204,31 @@
     }
   }
 
-  async function sendPrompt(event) {
-    event.preventDefault();
-    const message = $('prompt').value.trim();
-    if (!message || state.busy) return;
+  async function sendMessage(message) {
+    if (!message || state.busy) return false;
     try {
       await postJson('/api/chat', { message, model: $('model').value });
       state.runEngine = currentEngine();
-      $('prompt').value = '';
       setBusy(true);
       if (state.wake) state.wake();
+      return true;
     } catch (error) {
       toast(error.message);
+      return false;
     }
+  }
+
+  async function sendPrompt(event) {
+    event.preventDefault();
+    if (await sendMessage($('prompt').value.trim())) $('prompt').value = '';
+  }
+
+  // Vorschauen heißen *_vorschau.mp4; die volle Auflösung gibt es nur auf ausdrückliche Anfrage.
+  const isPreview = (file) => /_vorschau\.[a-z0-9]+$/i.test(file.name);
+
+  function requestFinal(file) {
+    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
+    sendMessage(`Bitte erstelle jetzt die finale Version von ${file.name} in voller Auflösung.`);
   }
 
   // ------------------------------------------------------------ Dateien
@@ -210,7 +245,7 @@
     const container = $('videos');
     container.replaceChildren();
     if (!videos.length && !images.length) {
-      container.innerHTML = '<p class="empty">Noch keine Videos. Starte links mit einem Auftrag.</p>';
+      container.innerHTML = '<p class="empty">Noch keine Videos in diesem Gespräch. Starte links mit einem Auftrag.</p>';
       return;
     }
     videos.forEach((file) => {
@@ -219,6 +254,22 @@
       card.className = 'media-card' + (isNew ? ' is-new' : '');
       card.innerHTML = `<video controls preload="metadata" src="${escapeHtml(mediaUrl(file))}"></video>
         <div class="media-meta"><strong>${escapeHtml(file.name)}</strong><span>${formatSize(file.size)} · ${formatTime(file.modified)}</span></div>`;
+      const actions = document.createElement('div');
+      actions.className = 'media-actions';
+      const badge = document.createElement('span');
+      badge.className = 'media-badge' + (isPreview(file) ? '' : ' is-final');
+      badge.textContent = isPreview(file) ? 'Vorschau' : 'Final';
+      actions.append(badge);
+      if (isPreview(file)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ghost small';
+        button.textContent = 'Finale Version erstellen';
+        button.title = 'Rendert dieses Video in voller Auflösung';
+        button.addEventListener('click', () => requestFinal(file));
+        actions.append(button);
+      }
+      card.append(actions);
       container.append(card);
       if (isNew) toast(`Neues Video: ${file.name}`);
     });
@@ -256,8 +307,11 @@
   }
 
   async function refreshFiles() {
+    // Nur die jüngste Anfrage zählt – sonst könnte nach "Neues Gespräch" die alte Galerie zurückkommen.
+    const generation = state.filesGeneration = (state.filesGeneration || 0) + 1;
     try {
       const data = await api('/api/files');
+      if (generation !== state.filesGeneration) return;
       renderVideos(data.exports || []);
       renderAssets(data.assets || []);
     } catch (error) { /* Nächster Versuch beim nächsten Intervall */ }
@@ -325,6 +379,82 @@
       clearInterval(state.loginTimer);
       state.loginTimer = setInterval(pollLogin, LOGIN_POLL_MS);
     } catch (error) { toast(error.message); }
+  }
+
+  // ------------------------------------------------------------ Gespräche
+
+  function conversationMeta(conversation) {
+    const parts = [];
+    if (conversation.updated) parts.push(formatTime(conversation.updated));
+    parts.push(conversation.messages === 1 ? '1 Auftrag' : `${conversation.messages} Aufträge`);
+    if (conversation.engine) parts.push(conversation.engine === 'codex' ? 'ChatGPT' : 'Claude');
+    if (conversation.current) parts.push('aktuelles Gespräch');
+    return parts.join(' · ');
+  }
+
+  function conversationEntry(conversation) {
+    const item = document.createElement('li');
+    const text = document.createElement('div');
+    text.className = 'conversation-text';
+    const title = document.createElement('strong');
+    title.textContent = conversation.title;
+    const meta = document.createElement('span');
+    meta.className = 'conversation-meta';
+    meta.textContent = conversationMeta(conversation);
+    text.append(title, meta);
+    if (conversation.snippet) {
+      const snippet = document.createElement('span');
+      snippet.className = 'conversation-snippet';
+      snippet.textContent = conversation.snippet;
+      text.append(snippet);
+    }
+    item.append(text);
+    if (!conversation.current) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'primary small';
+      button.textContent = 'Öffnen';
+      button.addEventListener('click', () => openConversation(conversation.id));
+      item.append(button);
+    }
+    return item;
+  }
+
+  function renderConversations(list) {
+    if (list.length) {
+      $('conversation-list').replaceChildren(...list.map(conversationEntry));
+      return;
+    }
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    empty.textContent = $('conversation-search').value.trim() ? 'Keine passenden Gespräche gefunden.' : 'Noch keine Gespräche.';
+    $('conversation-list').replaceChildren(empty);
+  }
+
+  async function searchConversations() {
+    const query = $('conversation-search').value.trim();
+    try {
+      const data = await api('/api/conversations?q=' + encodeURIComponent(query));
+      if (query === $('conversation-search').value.trim()) renderConversations(data.conversations);
+    } catch (error) { toast(error.message); }
+  }
+
+  function showConversations() {
+    $('conversations').hidden = false;
+    $('conversation-search').focus();
+    searchConversations();
+  }
+
+  async function openConversation(id) {
+    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
+    try {
+      await postJson('/api/conversations/open', { id });
+      $('conversations').hidden = true;
+      reloadConversation();
+    } catch (error) {
+      toast(error.message);
+      searchConversations();
+    }
   }
 
   // ------------------------------------------------------------ Updates
@@ -414,9 +544,7 @@
       if (!window.confirm('Neues Gespräch beginnen? Deine Videos und Dateien bleiben erhalten.')) return;
       try {
         await postJson('/api/reset');
-        $('messages').replaceChildren($('welcome'));
-        $('welcome').hidden = false;
-        state.next = 0;
+        reloadConversation();
       } catch (error) { toast(error.message); }
     });
     $('open-folder').addEventListener('click', () => postJson('/api/open', { target: 'studio' }).catch((e) => toast(e.message)));
@@ -439,9 +567,19 @@
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       info.hidden = true;
+      $('conversations').hidden = true;
       if (!state.updating) $('update').hidden = true;
     });
 
+    $('conversations-open').addEventListener('click', showConversations);
+    $('conversations-close').addEventListener('click', () => { $('conversations').hidden = true; });
+    $('conversations').addEventListener('click', (event) => {
+      if (event.target === $('conversations')) $('conversations').hidden = true;
+    });
+    $('conversation-search').addEventListener('input', () => {
+      clearTimeout(state.searchTimer);
+      state.searchTimer = setTimeout(searchConversations, SEARCH_DELAY_MS);
+    });
     $('update-open').addEventListener('click', openUpdateDialog);
     $('update-start').addEventListener('click', startUpdate);
     $('update-close').addEventListener('click', () => { $('update').hidden = true; });

@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Motion Studio</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/static/favicon.png">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -30,6 +32,7 @@
           </optgroup>
         </select>
       </label>
+      <button class="ghost" id="conversations-open" type="button" aria-haspopup="dialog">Gespräche</button>
       <button class="ghost" id="open-folder" type="button">Ordner öffnen</button>
       <button class="ghost" id="new-project" type="button">Neues Gespräch</button>
       <button class="ghost" id="info-open" type="button" aria-haspopup="dialog">Info</button>
@@ -64,11 +67,11 @@
     <aside class="side">
       <section class="panel">
         <div class="panel-head">
-          <h2>Deine Videos</h2>
-          <button class="ghost small" data-open="exports" type="button">Ordner</button>
+          <h2>Videos dieses Gesprächs</h2>
+          <button class="ghost small" data-open="conversation" type="button" title="Ordner dieses Gesprächs öffnen">Ordner</button>
         </div>
         <div class="gallery" id="videos">
-          <p class="empty">Noch keine Videos. Starte links mit einem Auftrag.</p>
+          <p class="empty">Noch keine Videos in diesem Gespräch. Starte links mit einem Auftrag.</p>
         </div>
       </section>
 
@@ -124,6 +127,17 @@
       <p class="fine">Claude und Claude Code sind Produkte von Anthropic, ChatGPT und Codex sind Produkte von OpenAI. CMG ist ein unabhängiges Projekt und steht mit keinem der beiden Unternehmen in Verbindung.</p>
       <div class="dialog-actions">
         <button class="primary" id="info-close" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="conversations" hidden>
+    <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="conversations-title">
+      <h2 id="conversations-title">Gespräche</h2>
+      <input id="conversation-search" type="search" placeholder="Durchsuchen, z. B. „Studio Nord“ oder „Logo“" autocomplete="off" aria-label="Gespräche durchsuchen">
+      <ul class="conversation-list" id="conversation-list"></ul>
+      <div class="dialog-actions">
+        <button class="ghost" id="conversations-close" type="button">Schließen</button>
       </div>
     </div>
   </div>

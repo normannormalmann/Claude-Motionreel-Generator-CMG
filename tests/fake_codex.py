@@ -2,11 +2,13 @@
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 
 THREAD_ID = "test-thread-1"
+FOLDER_HINT = re.compile(r"exports/([\w-]+)/")
 REQUIRED_FLAGS = ("--json", "--skip-git-repo-check", "--ignore-user-config",
                   "--dangerously-bypass-approvals-and-sandbox")
 
@@ -34,6 +36,8 @@ def main():
         return 2
 
     message = sys.stdin.read()
+    match = FOLDER_HINT.search(" ".join(args))
+    folder = match.group(1) if match else "ohne-ordner"
     resumed = args[1] == "resume"
     model = args[args.index("-m") + 1]
     emit({"type": "thread.started", "thread_id": THREAD_ID})
@@ -48,9 +52,9 @@ def main():
     emit({"type": "item.started", "item": command})
     emit({"type": "item.completed", "item": dict(command, exit_code=0, status="completed")})
     emit({"type": "item.completed", "item": {"id": "item_2", "type": "file_change", "status": "completed",
-          "changes": [{"path": str(Path.cwd() / "exports" / "fake.mp4"), "kind": "add"}]}})
-    exports = Path.cwd() / "exports"
-    exports.mkdir(exist_ok=True)
+          "changes": [{"path": str(Path.cwd() / "exports" / folder / "fake.mp4"), "kind": "add"}]}})
+    exports = Path.cwd() / "exports" / folder
+    exports.mkdir(parents=True, exist_ok=True)
     (exports / "fake.mp4").write_bytes(b"\x00" * 2048)
     if "fehler" in message:
         emit({"type": "error", "message": "unexpected status 401 Unauthorized: Please log in again"})

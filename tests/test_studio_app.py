@@ -7,6 +7,7 @@ import http.client
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -14,17 +15,19 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "studio-app"))
 os.environ["CMG_CLAUDE_BIN"] = str(ROOT / "tests" / "fake_claude.py")
 os.environ["CMG_CODEX_BIN"] = str(ROOT / "tests" / "fake_codex.py")
 
+import claude_bridge  # noqa: E402
 import engines  # noqa: E402
 import media_files  # noqa: E402
 import studio_app  # noqa: E402
 import updates  # noqa: E402
-from claude_bridge import StudioBridge  # noqa: E402
+from claude_bridge import StudioBridge, conversation_folder_name  # noqa: E402
 from engines import describe_codex_item, describe_tool, resolve_model, unwrap_shell  # noqa: E402
 
 WAIT_SECONDS = 20
@@ -97,6 +100,38 @@ class HelperTests(unittest.TestCase):
             (Path(temp) / "session.json").write_text(json.dumps(data), encoding="utf-8")
             self.assertEqual(StudioBridge(temp, temp).sessions, {"claude": "test-session-1"})
 
+    def test_every_run_gets_preview_rule_and_conversation_folder(self):
+        for engine in (engines.ClaudeEngine(), engines.CodexEngine()):
+            args = engine.chat_args("m", None, "2026-10-20_1412_Intro")
+            # Codex bekommt die Anweisungen als JSON-String (TOML-kompatibel, Umlaute maskiert).
+            joined = " ".join(json.loads(a.split("=", 1)[1]) if a.startswith("developer_instructions=") else a
+                              for a in args)
+            self.assertIn("_vorschau.mp4", joined)
+            self.assertIn("ausdrücklich", joined)
+            self.assertIn("exports/2026-10-20_1412_Intro/", joined)
+            self.assertIn("projekte/2026-10-20_1412_Intro/", joined)
+        self.assertNotIn("exports/", " ".join(engines.ClaudeEngine().chat_args("m", None)).replace("im Ordner exports", ""))
+
+    def test_conversation_folder_names_are_safe_and_unique(self):
+        with tempfile.TemporaryDirectory() as temp:
+            name = conversation_folder_name("../../Geheim: Intro für „Café“!", [temp], 0)
+            self.assertTrue(name.endswith("_Geheim-Intro-für-Café"), name)
+            self.assertNotIn("/", name)
+            self.assertNotIn(".", name)
+            (Path(temp) / name).mkdir()
+            self.assertEqual(conversation_folder_name("../../Geheim: Intro für „Café“!", [temp], 0), name + "-2")
+            self.assertTrue(conversation_folder_name("", [temp], 0).endswith("_Gespraech"))
+            with tempfile.TemporaryDirectory() as projects:
+                (Path(projects) / (name + "-2")).mkdir()
+                self.assertEqual(conversation_folder_name("../../Geheim: Intro für „Café“!", [temp, projects], 0),
+                                 name + "-3")
+
+    def test_stored_folder_must_be_a_plain_name(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for bad in ("../ausserhalb", "a/b", ".versteckt", 42):
+                (Path(temp) / "session.json").write_text(json.dumps({"sessions": {}, "folder": bad}), encoding="utf-8")
+                self.assertIsNone(StudioBridge(temp, temp).folder, bad)
+
     def test_safe_upload_name_strips_paths_hidden_files_and_devices(self):
         self.assertEqual(media_files.safe_upload_name("..%2F..%2Fmusic.mp3"), "music.mp3")
         self.assertEqual(media_files.safe_upload_name("Mein Song!.mp3"), "Mein Song_.mp3")
@@ -145,7 +180,11 @@ class ServerTestCase(unittest.TestCase):
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def tearDown(self):
+        # Ein abgebrochener Auftrag schreibt danach noch den Verlauf – erst dann den Temp-Ordner löschen.
         self.server.bridge.stop()
+        deadline = time.time() + WAIT_SECONDS
+        while self.server.bridge.busy and time.time() < deadline:
+            time.sleep(0.1)
         self.server.shutdown()
         self.server.server_close()
         self.temp.cleanup()
@@ -287,7 +326,8 @@ class ChatTests(ServerTestCase):
         self.assertIn("resume=ja", items[6]["text"])
         self.assertIn("modell=gpt-6.1-sol", items[6]["text"])
         saved = json.loads((self.data / "session.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved, {"sessions": {"codex": "test-thread-1"}, "engine": "codex"})
+        self.assertEqual((saved["sessions"], saved["engine"], saved["folder"]),
+                         ({"codex": "test-thread-1"}, "codex", self.server.bridge.folder))
 
     def test_switching_engine_adds_note_and_keeps_each_session(self):
         self.request("POST", "/api/chat", body={"message": "Erst Claude", "model": "opus"})
@@ -338,6 +378,121 @@ class ChatTests(ServerTestCase):
         self.assertEqual(status, 400)
         status, _, _ = self.request("POST", "/api/login", body={"engine": "gibtsnicht"})
         self.assertEqual(status, 400)
+
+    def test_conversation_gets_own_folder_that_survives_restart_and_reset(self):
+        self.request("POST", "/api/chat", body={"message": "Intro für Studio Nord"})
+        self.wait_until_idle()
+        folder = self.server.bridge.folder
+        self.assertIn("Intro-für-Studio-Nord", folder)
+        self.assertTrue((self.studio / "exports" / folder / "fake.mp4").exists())
+        self.assertEqual(StudioBridge(self.studio, self.data).folder, folder)
+        self.request("POST", "/api/chat", body={"message": "Weiter"})
+        self.wait_until_idle()
+        self.assertEqual(self.server.bridge.folder, folder)
+        self.request("POST", "/api/reset", body={})
+        self.assertIsNone(self.server.bridge.folder)
+        self.request("POST", "/api/chat", body={"message": "Ganz neues Video"})
+        self.wait_until_idle()
+        self.assertNotEqual(self.server.bridge.folder, folder)
+
+    def test_folder_failure_does_not_leave_studio_busy(self):
+        (self.studio / "exports").rmdir()
+        (self.studio / "exports").write_text("keine Ordner hier", encoding="utf-8")
+        status, _, _ = self.request("POST", "/api/chat", body={"message": "Hallo"})
+        self.assertEqual(status, 200)
+        items = self.wait_until_idle()
+        self.assertEqual(items[-1]["kind"], "error")
+        (self.studio / "exports").unlink()
+        (self.studio / "exports").mkdir()
+        self.request("POST", "/api/chat", body={"message": "Nochmal"})
+        self.assertEqual(self.wait_until_idle()[-1]["kind"], "done")
+
+    def test_conversation_from_older_version_keeps_its_videos_visible(self):
+        (self.studio / "exports" / "altes_video.mp4").write_bytes(b"x")
+        (self.studio / "exports" / "anderes-gespraech").mkdir()
+        (self.studio / "exports" / "anderes-gespraech" / "fremd.mp4").write_bytes(b"x")
+        self.server.bridge.items = [{"kind": "user", "text": "Altes Gespräch"}, {"kind": "done"}]
+        listing = json.loads(self.request("GET", "/api/files")[1])
+        self.assertEqual([f["name"] for f in listing["exports"]], ["altes_video.mp4"])
+        self.request("POST", "/api/chat", body={"message": "Weiter"})
+        items = self.wait_until_idle()
+        self.assertEqual(items[2]["kind"], "note")
+        self.assertIn(self.server.bridge.folder, items[2]["text"])
+        self.assertTrue((self.studio / "projekte" / self.server.bridge.folder).is_dir())
+
+    def test_reset_archives_and_old_conversation_can_be_found_and_reopened(self):
+        self.request("POST", "/api/chat", body={"message": "Intro für Studio Nord"})
+        self.wait_until_idle()
+        old_folder = self.server.bridge.folder
+        old_id = self.server.bridge.conversation_id
+        self.request("POST", "/api/reset", body={})
+        self.request("POST", "/api/chat", body={"message": "Ganz anderes Thema"})
+        self.wait_until_idle()
+
+        listing = json.loads(self.request("GET", "/api/conversations")[1])["conversations"]
+        self.assertEqual([(c["title"], c["current"]) for c in listing],
+                         [("Ganz anderes Thema", True), ("Intro für Studio Nord", False)])
+        hits = json.loads(self.request("GET", "/api/conversations?q=" + quote("studio nord"))[1])["conversations"]
+        self.assertEqual([c["id"] for c in hits], [old_id])
+        answer_hits = json.loads(self.request("GET", "/api/conversations?q=verstanden")[1])["conversations"]
+        self.assertEqual(len(answer_hits), 2, "auch Antworten der KI werden durchsucht")
+
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": old_id})
+        self.assertEqual(status, 200)
+        items = json.loads(self.request("GET", "/api/state?from=0")[1])["items"]
+        self.assertEqual(items[0]["text"], "Intro für Studio Nord")
+        self.assertEqual(self.server.bridge.folder, old_folder)
+        files = json.loads(self.request("GET", "/api/files")[1])
+        self.assertEqual([f["name"] for f in files["exports"]], ["fake.mp4"])
+        listing = json.loads(self.request("GET", "/api/conversations")[1])["conversations"]
+        self.assertEqual([(c["title"], c["current"]) for c in listing],
+                         [("Intro für Studio Nord", True), ("Ganz anderes Thema", False)])
+
+        self.request("POST", "/api/chat", body={"message": "Weiter am Intro"})
+        items = self.wait_until_idle()
+        self.assertIn("resume=ja", [i for i in items if i["kind"] == "assistant"][-1]["text"])
+        self.assertEqual(self.server.bridge.folder, old_folder)
+
+    def test_recycled_folder_name_does_not_overwrite_archive(self):
+        self.request("POST", "/api/chat", body={"message": "Intro"})
+        self.wait_until_idle()
+        first_id = self.server.bridge.conversation_id
+        self.request("POST", "/api/reset", body={})
+        # Ordner von Hand gelöscht: Der gleiche Name kann wieder vergeben werden.
+        for base in ("exports", "projekte"):
+            shutil.rmtree(self.studio / base / first_id)
+        with mock.patch.object(claude_bridge.time, "strftime", return_value=first_id.split("_Intro")[0]):
+            self.request("POST", "/api/chat", body={"message": "Intro"})
+            self.wait_until_idle()
+        self.assertNotEqual(self.server.bridge.conversation_id, first_id)
+        self.request("POST", "/api/reset", body={})
+        titles = [c["id"] for c in json.loads(self.request("GET", "/api/conversations")[1])["conversations"]]
+        self.assertEqual(len(titles), 2)
+        self.assertIn(first_id, titles)
+
+    def test_other_tabs_notice_a_conversation_switch(self):
+        _, data, _ = self.request("GET", "/api/state?from=0")
+        epoch = json.loads(data)["epoch"]
+        self.request("POST", "/api/chat", body={"message": "Erstes"})
+        self.wait_until_idle()
+        self.request("POST", "/api/reset", body={})
+        _, data, _ = self.request("GET", "/api/state?from=0")
+        self.assertNotEqual(json.loads(data)["epoch"], epoch)
+
+    def test_open_conversation_is_guarded(self):
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": "../session"})
+        self.assertEqual(status, 404)
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": "gibt-es-nicht"})
+        self.assertEqual(status, 404)
+        self.request("POST", "/api/chat", body={"message": "Erstes"})
+        self.wait_until_idle()
+        first = self.server.bridge.conversation_id
+        self.request("POST", "/api/reset", body={})
+        self.request("POST", "/api/chat", body={"message": "langsam bitte"})
+        status, _, _ = self.request("POST", "/api/conversations/open", body={"id": first})
+        self.assertEqual(status, 409)
+        status, _, _ = self.request("GET", "/api/conversations", session=False)
+        self.assertEqual(status, 403)
 
     def test_reset_clears_conversation(self):
         self.request("POST", "/api/chat", body={"message": "Hallo"})
@@ -415,13 +570,44 @@ class FileTests(ServerTestCase):
         status, _, _ = self.request("POST", "/api/upload", body=b"x", headers={"X-Filename": "virus.exe"})
         self.assertEqual(status, 400)
 
-    def test_files_lists_exports_and_assets(self):
-        (self.studio / "exports" / "a.mp4").write_bytes(b"x")
+    def test_files_lists_only_current_conversation_and_assets(self):
+        (self.studio / "exports" / "alt.mp4").write_bytes(b"x")
+        (self.studio / "exports" / "anderes-gespraech").mkdir()
+        (self.studio / "exports" / "anderes-gespraech" / "fremd.mp4").write_bytes(b"x")
         (self.studio / "assets" / "logo.png").write_bytes(b"x")
         _, data, _ = self.request("GET", "/api/files")
         listing = json.loads(data)
-        self.assertEqual([f["name"] for f in listing["exports"]], ["a.mp4"])
+        self.assertEqual(listing["exports"], [])
+        self.assertIsNone(listing["conversation"])
         self.assertEqual(listing["assets"][0]["type"], "image")
+
+        self.request("POST", "/api/chat", body={"message": "Mein Intro"})
+        self.wait_until_idle()
+        folder = self.server.bridge.folder
+        (self.studio / "exports" / folder / "vorschau").mkdir()
+        (self.studio / "exports" / folder / "vorschau" / "bild 1.png").write_bytes(b"x")
+        listing = json.loads(self.request("GET", "/api/files")[1])
+        self.assertEqual(listing["conversation"], folder)
+        self.assertEqual(sorted(f["name"] for f in listing["exports"]), ["fake.mp4", "vorschau/bild 1.png"])
+        image = next(f for f in listing["exports"] if f["type"] == "image")
+        status, body, _ = self.request("GET", image["url"])
+        self.assertEqual((status, body), (200, b"x"))
+
+    def test_open_conversation_folder(self):
+        opened = []
+        with mock.patch.object(studio_app.ps, "open_in_file_manager", opened.append):
+            self.request("POST", "/api/open", body={"target": "conversation"})
+            self.request("POST", "/api/chat", body={"message": "Intro"})
+            self.wait_until_idle()
+            self.request("POST", "/api/open", body={"target": "conversation"})
+        self.assertEqual(opened, [self.studio / "exports", self.studio / "exports" / self.server.bridge.folder])
+
+    def test_favicon_is_served_without_session(self):
+        for path in ("/static/favicon.png", "/favicon.ico", "/static/apple-touch-icon.png"):
+            status, body, response = self.request("GET", path, session=False)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(response.getheader("Content-Type"), "image/png")
+            self.assertTrue(body.startswith(b"\x89PNG"))
 
 
 class BrowserTests(ServerTestCase):
@@ -490,6 +676,58 @@ class BrowserTests(ServerTestCase):
                 self.assertTrue(page.locator("#update-open").is_hidden())
                 page.get_by_role("button", name="Info").click()
                 self.assertEqual(page.locator("#info-version").inner_text(), "Version " + REPO_MANIFEST["cmg"])
+            finally:
+                browser.close()
+
+    def test_preview_video_offers_final_version(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        self.request("POST", "/api/chat", body={"message": "Intro"})
+        self.wait_until_idle()
+        folder = self.studio / "exports" / self.server.bridge.folder
+        (folder / "intro_vorschau.mp4").write_bytes(b"\x00" * 2048)
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                card = page.locator(".media-card", has_text="intro_vorschau.mp4")
+                card.locator(".media-badge", has_text="Vorschau").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(page.locator(".media-card", has_text="fake.mp4").locator(".media-badge").text_content(),
+                                 "Final")
+                card.get_by_role("button", name="Finale Version erstellen").click()
+                page.locator(".msg-user", has_text="finale Version von intro_vorschau.mp4").wait_for(
+                    timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(page.locator("link[rel=icon]").get_attribute("href"), "/static/favicon.png")
+            finally:
+                browser.close()
+
+    def test_search_and_reopen_old_conversation_in_browser(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        self.request("POST", "/api/chat", body={"message": "Logo-Animation für Café Blau"})
+        self.wait_until_idle()
+        self.request("POST", "/api/reset", body={})
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                page.get_by_role("button", name="Gespräche").click()
+                page.locator("#conversation-search").fill("café")
+                entry = page.locator("#conversation-list li", has_text="Logo-Animation für Café Blau")
+                entry.wait_for(timeout=WAIT_SECONDS * 1000)
+                entry.get_by_role("button", name="Öffnen").click()
+                page.locator(".msg-user", has_text="Logo-Animation für Café Blau").wait_for(timeout=WAIT_SECONDS * 1000)
+                page.locator(".media-card", has_text="fake.mp4").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertTrue(page.locator("#conversations").is_hidden())
+                page.get_by_role("button", name="Gespräche").click()
+                page.locator("#conversation-search").fill("gibt es nicht")
+                page.get_by_text("Keine passenden Gespräche gefunden.").wait_for(timeout=WAIT_SECONDS * 1000)
             finally:
                 browser.close()
 

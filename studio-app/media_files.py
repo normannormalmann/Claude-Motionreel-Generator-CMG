@@ -25,11 +25,17 @@ class UploadError(Exception):
     """Upload konnte nicht vollständig gespeichert werden."""
 
 
-def list_media(studio_dir, root):
+def list_media(studio_dir, root, subdir=None, top_level_only=False):
+    """Neueste Mediendateien in root – oder nur in dessen Unterordner subdir (z. B. eines Gesprächs)."""
     base = Path(studio_dir) / root
+    url_prefix = root
+    if subdir:
+        base = base / subdir
+        url_prefix = "{}/{}".format(root, quote(subdir))
     if not base.is_dir():
         return []
-    files = [p for p in base.rglob("*") if p.is_file() and p.suffix.lower() in MEDIA_TYPES]
+    candidates = base.glob("*") if top_level_only else base.rglob("*")
+    files = [p for p in candidates if p.is_file() and p.suffix.lower() in MEDIA_TYPES]
     files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     result = []
     for path in files[:MAX_MEDIA_FILES]:
@@ -37,7 +43,7 @@ def list_media(studio_dir, root):
         stat = path.stat()
         result.append({
             "name": relative,
-            "url": "/media/{}/{}".format(root, quote(relative)),
+            "url": "/media/{}/{}".format(url_prefix, quote(relative)),
             "type": MEDIA_TYPES[path.suffix.lower()].split("/")[0],
             "size": stat.st_size,
             "modified": stat.st_mtime,

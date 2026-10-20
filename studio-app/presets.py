@@ -29,15 +29,15 @@ CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 SHOWREEL_TEXT = (
     "Erstelle ein 15 Sekunden langes Motion-Design-Showreel für ein fiktives Designstudio.\n"
-    "Format: 1920 × 1080 Pixel, 30 fps.\n"
+    "Format der finalen Version: 1920 × 1080 Pixel, 30 fps.\n"
     "Stil: redaktionell, präzise, große Typografie, cremefarbener Hintergrund, schwarze Schrift und orange Akzente.\n"
     "Plane fünf Szenen mit unterschiedlichen Bewegungsideen. Beginne zunächst ohne Audio.\n\n"
     "Lies CLAUDE.md und prüfe die vorhandenen Werkzeuge. Erstelle dann:\n"
     "1. Die HTML-Animation mit window.seek(timeInSeconds).\n2. Ein Python-Renderskript mit Playwright.\n"
-    "3. Eine Vorschau mit 960 × 540 Pixeln.\n4. Eine Kontaktübersicht der Vorschau.\n"
-    "5. Nach höchstens zwei visuellen Korrekturrunden den vollständigen MP4-Export.\n\n"
+    "3. Eine Kontaktübersicht der wichtigsten Momente.\n"
+    "4. Nach höchstens zwei visuellen Korrekturrunden eine Vorschau als MP4 mit 960 × 540 Pixeln.\n\n"
     "Prüfe die erzeugten Bilder tatsächlich. Achte auf lesbare Texte und saubere Szenenübergänge.\n"
-    "Speichere das fertige Video als exports/showreel.mp4."
+    "Die finale Version in voller Auflösung erstellen wir, sobald mir die Vorschau gefällt."
 )
 PRODUCT_TEXT = (
     "Erstelle einen 20-Sekunden-Produktfilm für [Produkt].\n\n"
@@ -63,7 +63,7 @@ BUILTIN_PRESETS = (
         "Reduziere das Überschwingen der Buchstaben.\nErstelle anschließend eine neue Vorschau.")},
     {"id": "builtin-musik", "name": "Musik ergänzen", "brand": None, "text": (
         "Ergänze assets/music.mp3 als Musik.\nPasse wichtige Übergänge an den Rhythmus an.\n"
-        "Blende die Musik am Ende aus.\nExportiere Video mit H.264 und Audio mit AAC.")},
+        "Blende die Musik am Ende aus.\nErstelle eine neue Vorschau mit Ton (Video H.264, Audio AAC).")},
 )
 
 
