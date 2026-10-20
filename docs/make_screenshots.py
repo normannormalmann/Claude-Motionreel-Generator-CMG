@@ -1,7 +1,7 @@
 """Erzeugt die Screenshots für die README.
 
 Rendert ein kurzes Beispielvideo, spielt ein typisches Gespräch ein und
-fotografiert die Oberfläche (hell, dunkel, Anmeldung, Vorlagen).
+fotografiert die Oberfläche (hell, dunkel, Modellauswahl, Anmeldung bei Claude und ChatGPT, Vorlagen).
 
 Aufruf (mit dem Python des Studios, das Playwright enthält):
     <venv-python> docs/make_screenshots.py
@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "docs" / "images"
 sys.path.insert(0, str(ROOT / "studio-app"))
 os.environ["CMG_CLAUDE_BIN"] = str(ROOT / "tests" / "fake_claude.py")
+os.environ["CMG_CODEX_BIN"] = str(ROOT / "tests" / "fake_codex.py")
+os.environ["CMG_FAKE_CODEX_LOGGED_OUT"] = "1"  # damit das Studio den ChatGPT-Anmeldedialog zeigt
 
 import studio_app  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
@@ -125,6 +127,32 @@ def open_preset_fill(page):
     page.locator("#fill-form input").nth(0).fill("Unser neues Büro")
 
 
+def show_model_list(page):
+    """Zeigt die Modellauswahl aufgeklappt (ein natives Auswahlmenü lässt sich nicht fotografieren).
+
+    Dafür wird eine Kopie der echten Auswahl als Liste unter das Feld gelegt – mit denselben Einträgen.
+    """
+    page.evaluate("""() => {
+        const select = document.getElementById('model');
+        const label = select.closest('label');
+        label.style.position = 'relative';
+        const list = select.cloneNode(true);
+        list.removeAttribute('id');
+        list.size = select.options.length + list.querySelectorAll('optgroup').length;
+        list.value = select.value;
+        Object.assign(list.style, {
+            position: 'absolute', top: 'calc(100% + 8px)', right: '0', height: 'auto', zIndex: 5,
+            minWidth: select.offsetWidth + 'px', borderRadius: '12px', padding: '8px', backgroundImage: 'none',
+            boxShadow: '0 16px 40px rgba(0, 0, 0, .14)', overflow: 'hidden',
+        });
+        label.append(list);
+    }""")
+    label = page.locator(".model-select").bounding_box()
+    menu = page.locator(".model-select select").nth(1).bounding_box()
+    left = max(0, label["x"] - 32)
+    return {"x": left, "y": 0, "width": menu["x"] + menu["width"] + 32 - left, "height": menu["y"] + menu["height"] + 32}
+
+
 def take_screenshots(server):
     OUTPUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
@@ -133,6 +161,8 @@ def take_screenshots(server):
             ("studio-hell.png", {"width": 1440, "height": 900}, "light", None),
             ("studio-dunkel.png", {"width": 1440, "height": 900}, "dark", None),
             ("anmeldung.png", {"width": 1440, "height": 900}, "light", "login"),
+            ("anmeldung-chatgpt.png", {"width": 1440, "height": 900}, "light", "login-codex"),
+            ("modell-auswahl.png", {"width": 1440, "height": 900}, "light", "models"),
             ("vorlage-bearbeiten.png", {"width": 1440, "height": 1000}, "light", "editor"),
             ("vorlage-ausfuellen.png", {"width": 1440, "height": 900}, "light", "fill"),
         ]
@@ -153,12 +183,18 @@ def take_screenshots(server):
             if mode == "login":
                 page.evaluate("""() => { document.getElementById('login').hidden = false;
                     document.getElementById('login-status').textContent = 'Warte auf die Anmeldung im Browser …'; }""")
+            if mode == "login-codex":
+                page.locator("#model").select_option("codex-max")
+                page.locator("#login").wait_for()
+                page.evaluate("""() => { document.getElementById('login-status').textContent =
+                    'Warte auf die Anmeldung im Browser …'; }""")
+            clip = show_model_list(page) if mode == "models" else None
             if mode == "editor":
                 open_preset_editor(page)
             if mode == "fill":
                 open_preset_fill(page)
             page.wait_for_timeout(800)
-            page.screenshot(path=str(OUTPUT / name))
+            page.screenshot(path=str(OUTPUT / name), clip=clip)
             context.close()
         browser.close()
 

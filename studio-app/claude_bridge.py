@@ -1,4 +1,4 @@
-"""Verbindung zu Claude Code: Aufträge ausführen, Fortschritt sammeln, Anmeldung."""
+"""Verbindung zu den KI-Motoren (Claude Code, Codex): Aufträge ausführen, Fortschritt sammeln, Anmeldung."""
 
 import json
 import os
@@ -10,54 +10,25 @@ import time
 from pathlib import Path
 
 import platform_support as ps
+from engines import RunState, engine_for, resolve_model, valid_session_id
 
-ALLOWED_MODELS = ("opus", "sonnet")
-ALLOWED_TOOLS = ("Bash", "PowerShell", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "TodoWrite")
 MAX_ITEMS = 600
 MAX_STDERR_CHARS = 4000
 AUTH_CACHE_SECONDS = 30
-IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 LOGIN_HINT = re.compile(r"log ?in|logged out|api key|authenticat|anmeld|unauthori[sz]ed|oauth", re.IGNORECASE)
 URL_PATTERN = re.compile(r"https://\S+")
-
-APP_SYSTEM_PROMPT = (
-    "Du arbeitest im Motion Studio, einer grafischen Oberfläche. Die Person sieht keine Konsole, "
-    "nur deine Textantworten und die Videos im Ordner exports. Antworte auf Deutsch, kurz und ohne "
-    "Fachjargon. Brauchst du eine Entscheidung oder Freigabe, stelle die Frage am Ende deiner "
-    "Antwort und warte auf die nächste Nachricht. Nenne fertige Videos immer mit ihrem Dateinamen."
-)
 
 
 class BusyError(Exception):
     """Es läuft bereits ein Auftrag."""
 
 
-class ClaudeMissingError(Exception):
-    """Claude Code wurde nicht gefunden."""
+class EngineMissingError(Exception):
+    """Der gewählte Motor (Claude Code oder Codex) wurde nicht gefunden."""
 
-
-def describe_tool(name, tool_input):
-    """Übersetzt einen Werkzeugaufruf in eine verständliche Zeile."""
-    tool_input = tool_input if isinstance(tool_input, dict) else {}
-    path = tool_input.get("file_path") or tool_input.get("path") or ""
-    filename = Path(path).name if path else ""
-    if name == "Write":
-        return "Erstellt " + filename, path
-    if name in ("Edit", "MultiEdit"):
-        return "Bearbeitet " + filename, path
-    if name == "Read":
-        verb = "Prüft Bild " if filename.lower().endswith(IMAGE_SUFFIXES) else "Liest "
-        return verb + filename, path
-    if name in ("Bash", "PowerShell"):
-        command = str(tool_input.get("command", ""))
-        first_line = command.splitlines()[0][:90] if command.strip() else "Befehl"
-        label = tool_input.get("description") or first_line
-        return "Führt aus: " + label, command
-    if name in ("Glob", "Grep"):
-        return "Sucht im Projekt", str(tool_input.get("pattern", ""))
-    if name == "TodoWrite":
-        return "Plant die Arbeitsschritte", ""
-    return "Arbeitsschritt: " + name, ""
+    def __init__(self, engine):
+        super().__init__(engine.label)
+        self.engine = engine
 
 
 class StudioBridge:
@@ -67,12 +38,13 @@ class StudioBridge:
         self._lock = threading.Condition()
         self._process = None
         self._stderr = ""
-        self._auth_cache = (0.0, None)
+        self._auth_cache = {}
         self._login_process = None
+        self._login_engine = None
         self._login_lines = []
         self._login_state = "idle"
         self.items = self._load_json("chat.json", [])
-        self.session_id = self._load_json("session.json", {}).get("session_id")
+        self.sessions, self.engine_key = self._load_sessions()
         self.busy = False
         self._stopped = False
 
@@ -84,6 +56,18 @@ class StudioBridge:
         except (OSError, ValueError):
             return default
 
+    def _load_sessions(self):
+        data = self._load_json("session.json", {})
+        data = data if isinstance(data, dict) else {}
+        sessions = data.get("sessions")
+        engine_key = data.get("engine")
+        if not isinstance(sessions, dict):
+            # Ältere Versionen kannten nur Claude: {"session_id": "..."}
+            sessions = {"claude": data.get("session_id")}
+            engine_key = "claude" if data.get("session_id") else None
+        sessions = {key: value for key, value in sessions.items() if valid_session_id(value)}
+        return sessions, engine_key
+
     def _save_json(self, name, data):
         target = self.data_dir / name
         temp = target.with_suffix(".tmp")
@@ -93,7 +77,7 @@ class StudioBridge:
     def _persist(self):
         self.items = self.items[-MAX_ITEMS:]
         self._save_json("chat.json", self.items)
-        self._save_json("session.json", {"session_id": self.session_id})
+        self._save_json("session.json", {"sessions": self.sessions, "engine": self.engine_key})
 
     def _add(self, item):
         with self._lock:
@@ -111,50 +95,47 @@ class StudioBridge:
             self._lock.wait_for(lambda: len(self.items) > start or not self.busy, timeout=timeout)
         return self.snapshot(start)
 
-    def auth_status(self, force=False):
-        checked_at, cached = self._auth_cache
+    def auth_status(self, engine_key="claude", force=False):
+        engine = engine_for(engine_key)
+        checked_at, cached = self._auth_cache.get(engine.key, (0.0, None))
         if cached is not None and not force and time.time() - checked_at < AUTH_CACHE_SECONDS:
             return cached
-        command = ps.claude_command()
+        command = engine.command()
         if not command:
-            result = {"installed": False, "logged_in": False}
+            result = {"engine": engine.key, "installed": False, "logged_in": False}
         else:
             try:
                 output = subprocess.run(
-                    command + ["auth", "status", "--json"], capture_output=True, text=True,
+                    command + engine.auth_args(), capture_output=True, text=True,
                     encoding="utf-8", errors="replace", timeout=30, env=ps.tool_environment(),
                     **ps.hidden_process_flags()
                 )
-                logged_in = bool(json.loads(output.stdout or "{}").get("loggedIn"))
-            except (OSError, ValueError, subprocess.SubprocessError):
+                logged_in = engine.parse_auth(output.returncode, output.stdout, output.stderr)
+            except (OSError, subprocess.SubprocessError):
                 logged_in = False
-            result = {"installed": True, "logged_in": logged_in}
-        self._auth_cache = (time.time(), result)
+            result = {"engine": engine.key, "installed": True, "logged_in": logged_in}
+        self._auth_cache[engine.key] = (time.time(), result)
         return result
 
     # ------------------------------------------------------------ Aufträge
 
-    def start_chat(self, message, model):
-        command = ps.claude_command()
+    def start_chat(self, message, model_choice):
+        engine, model = resolve_model(model_choice)
+        command = engine.command()
         if not command:
-            raise ClaudeMissingError()
-        model = model if model in ALLOWED_MODELS else ALLOWED_MODELS[0]
+            raise EngineMissingError(engine)
         with self._lock:
             if self.busy:
                 raise BusyError()
             self.busy = True
+            if self.items and self.engine_key and self.engine_key != engine.key:
+                self.items.append({"kind": "note", "text": "Ab hier arbeitet {0}. {0} kennt den bisherigen "
+                                   "Verlauf dieses Gesprächs nicht.".format(engine.label)})
+            self.engine_key = engine.key
             self.items.append({"kind": "user", "text": message})
             self._lock.notify_all()
 
-        args = command + [
-            "-p", "--output-format", "stream-json", "--verbose",
-            "--model", model, "--permission-mode", "acceptEdits",
-            "--append-system-prompt", APP_SYSTEM_PROMPT,
-        ]
-        if self.session_id:
-            args += ["--resume", self.session_id]
-        args += ["--allowedTools"] + list(ALLOWED_TOOLS)
-
+        args = command + engine.chat_args(model, self.sessions.get(engine.key))
         session_flags = {} if ps.IS_WINDOWS else {"start_new_session": True}
         try:
             self._process = subprocess.Popen(
@@ -163,11 +144,11 @@ class StudioBridge:
                 **ps.hidden_process_flags(), **session_flags
             )
         except OSError as error:
-            self._finish({"kind": "error", "text": "Claude konnte nicht gestartet werden: {}".format(error)})
+            self._finish({"kind": "error", "text": "{} konnte nicht gestartet werden: {}".format(engine.label, error)})
             return
-        threading.Thread(target=self._run, args=(self._process, message), daemon=True).start()
+        threading.Thread(target=self._run, args=(self._process, message, engine), daemon=True).start()
 
-    def _run(self, process, message):
+    def _run(self, process, message, engine):
         self._stderr = ""
         threading.Thread(target=self._collect_stderr, args=(process,), daemon=True).start()
         try:
@@ -176,20 +157,17 @@ class StudioBridge:
         except OSError:
             pass
 
-        final = None
+        run = RunState(self._add)
         for raw_line in process.stdout:
             event = self._parse(raw_line)
             if event is None:
                 continue
-            if event.get("session_id"):
-                self.session_id = event["session_id"]
-            if event.get("type") == "result":
-                final = event
-            else:
-                self._handle_event(event)
+            engine.consume(event, run)
+            if run.session_id:
+                self.sessions[engine.key] = run.session_id
         process.stdout.close()
         process.wait()
-        self._finish(self._final_item(process.returncode, final))
+        self._finish(self._final_item(process.returncode, run, engine))
 
     def _collect_stderr(self, process):
         for raw_line in process.stderr:
@@ -204,26 +182,17 @@ class StudioBridge:
             return None
         return event if isinstance(event, dict) else None
 
-    def _handle_event(self, event):
-        if event.get("type") != "assistant":
-            return
-        for block in (event.get("message") or {}).get("content") or []:
-            if block.get("type") == "text" and block.get("text", "").strip():
-                self._add({"kind": "assistant", "text": block["text"]})
-            elif block.get("type") == "tool_use":
-                label, detail = describe_tool(block.get("name", ""), block.get("input"))
-                self._add({"kind": "tool", "text": label, "detail": detail})
-
-    def _final_item(self, return_code, final):
-        if final and not final.get("is_error") and final.get("subtype", "success") == "success":
-            return {"kind": "done", "cost": final.get("total_cost_usd")}
+    def _final_item(self, return_code, run, engine):
+        if run.success:
+            return {"kind": "done", "cost": run.cost}
         if self._stopped or (return_code is not None and return_code < 0):
             return {"kind": "error", "text": "Auftrag abgebrochen."}
-        text = (final or {}).get("result") or self._stderr.strip() or "Claude hat den Auftrag mit einem Fehler beendet."
+        text = (run.error_text or self._stderr.strip()
+                or "{} hat den Auftrag mit einem Fehler beendet.".format(engine.label))
         needs_login = bool(LOGIN_HINT.search(text))
         if needs_login:
-            self._auth_cache = (0.0, None)
-        return {"kind": "error", "text": text[-1500:], "needs_login": needs_login}
+            self._auth_cache.pop(engine.key, None)
+        return {"kind": "error", "text": text[-1500:], "needs_login": needs_login, "engine": engine.key}
 
     def _finish(self, item):
         with self._lock:
@@ -239,6 +208,11 @@ class StudioBridge:
         if not process or process.poll() is not None:
             return
         self._stopped = True
+        self._kill_tree(process)
+
+    @staticmethod
+    def _kill_tree(process):
+        """Beendet einen Prozess samt Kindprozessen (Codex startet unter Node einen eigenen Prozess)."""
         if ps.IS_WINDOWS:
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)],
                            capture_output=True, **ps.hidden_process_flags())
@@ -253,35 +227,59 @@ class StudioBridge:
             if self.busy:
                 raise BusyError()
             self.items = []
-            self.session_id = None
+            self.sessions = {}
+            self.engine_key = None
             self._persist()
             self._lock.notify_all()
 
     # ------------------------------------------------------------ Anmeldung
 
-    def start_login(self):
-        command = ps.claude_command()
+    def start_login(self, engine_key="claude"):
+        engine = engine_for(engine_key)
+        command = engine.command()
         if not command:
-            raise ClaudeMissingError()
-        if self._login_state == "running":
-            return
-        self._login_lines = []
-        self._login_state = "running"
-        self._login_process = subprocess.Popen(
-            command + ["auth", "login"], env=ps.tool_environment(),
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            **ps.hidden_process_flags()
-        )
-        threading.Thread(target=self._run_login, args=(self._login_process,), daemon=True).start()
+            raise EngineMissingError(engine)
+        session_flags = {} if ps.IS_WINDOWS else {"start_new_session": True}
+        with self._lock:
+            previous = self._login_process
+            if previous and previous.poll() is None:
+                if self._login_engine == engine.key:
+                    return
+                # Ein laufendes "codex login" hält Port 1455 belegt – vor dem Wechsel sicher beenden.
+                self._kill_tree(previous)
+                try:
+                    previous.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+            self._login_lines = []
+            self._login_engine = engine.key
+            try:
+                self._login_process = subprocess.Popen(
+                    command + engine.login_args(), env=ps.tool_environment(),
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    **ps.hidden_process_flags(), **session_flags
+                )
+            except OSError as error:
+                self._login_process = None
+                self._login_state = "failed"
+                self._login_lines.append("{} konnte nicht gestartet werden: {}".format(engine.label, error))
+                return
+            self._login_state = "running"
+        threading.Thread(target=self._run_login, args=(self._login_process, engine.key), daemon=True).start()
 
-    def _run_login(self, process):
+    def _run_login(self, process, engine_key):
+        lines = self._login_lines
         for raw_line in process.stdout:
             line = raw_line.decode("utf-8", "replace").rstrip()
             if line:
-                self._login_lines.append(line)
+                lines.append(line)
         process.wait()
-        self._auth_cache = (0.0, None)
-        self._login_state = "done" if process.returncode == 0 else "failed"
+        process.stdout.close()
+        process.stdin.close()
+        self._auth_cache.pop(engine_key, None)
+        with self._lock:
+            if process is self._login_process:
+                self._login_state = "done" if process.returncode == 0 else "failed"
 
     def send_login_code(self, code):
         process = self._login_process
@@ -292,4 +290,5 @@ class StudioBridge:
     def login_snapshot(self):
         text = "\n".join(self._login_lines[-30:])
         urls = URL_PATTERN.findall(text)
-        return {"state": self._login_state, "output": text, "url": urls[-1] if urls else None}
+        return {"state": self._login_state, "engine": self._login_engine,
+                "output": text, "url": urls[-1] if urls else None}

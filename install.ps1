@@ -1,6 +1,6 @@
 ﻿# Claude Motionreel Generator (CMG) - Installer für Windows.
 #
-# Richtet Claude Code, Git, Node.js, Python, Playwright (Chromium), FFmpeg und
+# Richtet Claude Code, Codex (optional), Git, Node.js, Python, Playwright (Chromium), FFmpeg und
 # den Studio-Ordner ein. Kann beliebig oft ausgeführt werden: Bereits
 # Vorhandenes wird erkannt und übersprungen.
 #
@@ -28,7 +28,9 @@ $VenvDir = Join-Path $AppDataDir 'venv'
 $VenvPython = Join-Path $VenvDir 'Scripts\python.exe'
 $VenvPythonW = Join-Path $VenvDir 'Scripts\pythonw.exe'
 $AppDir = Join-Path $AppDataDir 'app'
-$AppFiles = @('studio_app.py', 'claude_bridge.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js')
+# Geprüfte Codex-Version; bewusst festgelegt und nur nach einem Test erhöhen.
+$CodexVersion = '0.162.1'
+$AppFiles = @('studio_app.py', 'claude_bridge.py', 'engines.py', 'stop_studio.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js')
 $HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- Hilfen
@@ -154,6 +156,23 @@ function Install-NodeJs {
     else { Write-Warn 'Node.js konnte nicht installiert werden (optional).' }
 }
 
+# Codex (OpenAI) ist optional: Damit lässt sich im Studio ChatGPT statt Claude verwenden.
+function Install-Codex {
+    if (Test-Command 'codex') { Write-Ok 'Codex bereits installiert'; return }
+    if (-not (Test-Command 'npm')) { Write-Warn 'Codex übersprungen: Node.js fehlt (optional, nur für ChatGPT nötig).'; return }
+    Write-Step 'Installiere Codex (für ChatGPT im Studio)'
+    try {
+        Invoke-Native 'npm.cmd' @('install', '-g', "@openai/codex@$CodexVersion") 'Codex konnte nicht installiert werden'
+        Add-UserPath (Join-Path $env:APPDATA 'npm')
+        Update-SessionPath
+    } catch {
+        Write-Warn "$($_.Exception.Message). Das Studio funktioniert trotzdem mit Claude."
+        return
+    }
+    if (Test-Command 'codex') { Write-Ok 'Codex installiert' }
+    else { Write-Warn 'Codex wurde nicht gefunden (optional, nur für ChatGPT nötig).' }
+}
+
 function Install-Python {
     $python = Find-Python
     if (-not $python) {
@@ -229,8 +248,22 @@ function Write-StudioFiles {
     Write-Ok 'CLAUDE.md mit den Studio-Regeln angelegt'
 }
 
+# Ein noch laufendes Studio würde weiter die alte Version zeigen. Läuft gerade ein Auftrag,
+# bleibt es unangetastet, damit kein Render-Lauf verloren geht.
+function Stop-RunningStudio {
+    $stopScript = Join-Path $AppDir 'stop_studio.py'
+    Get-RepoFile 'studio-app/stop_studio.py' $stopScript
+    & $VenvPython $stopScript $AppDataDir | Out-Host
+    if ($LASTEXITCODE -eq 3) {
+        Write-Warn 'Das Studio arbeitet gerade an einem Auftrag. Schließe es danach und starte es neu, damit die neue Version geladen wird.'
+    } elseif ($LASTEXITCODE -ne 0) {
+        Write-Warn 'Das laufende Studio konnte nicht beendet werden. Bitte schließe es und starte es neu.'
+    }
+}
+
 function Install-StudioApp {
     Write-Step 'Installiere die Studio-App (Oberfläche im Browser)'
+    Stop-RunningStudio
     foreach ($file in $AppFiles) {
         Get-RepoFile "studio-app/$file" (Join-Path $AppDir ($file -replace '/', '\'))
     }
@@ -248,7 +281,7 @@ function New-AppShortcut([string]$Folder) {
     $shortcut.Arguments = "`"$(Join-Path $AppDir 'studio_app.py')`""
     $shortcut.WorkingDirectory = $StudioDir
     $shortcut.IconLocation = Join-Path $AppDir 'icon.ico'
-    $shortcut.Description = 'Videos mit Claude erstellen'
+    $shortcut.Description = 'Videos mit Claude oder ChatGPT erstellen'
     $shortcut.Save()
 }
 
@@ -293,6 +326,7 @@ function Test-Installation {
     Write-Ok ("Python:      " + ((& $VenvPython --version) | Select-Object -First 1))
     Write-Ok ("FFmpeg:      " + ((& ffmpeg -version) | Select-Object -First 1))
     if (Test-Command 'node') { Write-Ok ("Node.js:     " + (& node --version)) } else { Write-Warn 'Node.js fehlt (optional)' }
+    if (Test-Command 'codex') { Write-Ok ("Codex:       " + ((& codex --version) | Select-Object -First 1)) } else { Write-Warn 'Codex fehlt (optional, nur für ChatGPT nötig)' }
 
     Invoke-Native $VenvPython @('-c', 'import sys; sys.path.insert(0, sys.argv[1]); import studio_app', $AppDir) 'Die Studio-App lässt sich nicht laden'
     Write-Ok 'Studio-App:  bereit'
@@ -311,7 +345,7 @@ function Show-NextSteps {
     Write-Host ''
     Write-Host 'So geht es weiter:'
     Write-Host '  1. Doppelklick auf "Motion Studio" auf dem Desktop. Das Studio öffnet sich im Browser.'
-    Write-Host '  2. Beim ersten Start meldest du dich dort bei Claude an.'
+    Write-Host '  2. Beim ersten Start meldest du dich dort bei Claude an (oder bei ChatGPT, wenn du oben "GPT" wählst).'
     Write-Host '  3. Wähle eine Vorlage oder beschreibe dein Video und klicke auf "Senden".'
     Write-Host ''
 }
@@ -337,6 +371,7 @@ function Main {
     Install-Git
     Install-ClaudeCode
     Install-NodeJs
+    Install-Codex
     $python = Install-Python
     Install-Ffmpeg
 

@@ -5,9 +5,32 @@
   const BUSY_FILES_MS = 6000;
   const LOGIN_POLL_MS = 1500;
   const MAX_THUMBS = 9;
+  const DEFAULT_MODEL = 'opus';
+  const ENGINES = {
+    claude: {
+      label: 'Claude',
+      loginTitle: 'Bei Claude anmelden',
+      loginIntro: 'Damit Claude für dich arbeiten kann, melde dich einmalig mit deinem Claude-Konto an. Dein Browser öffnet sich dafür.',
+      missing: 'Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.',
+      usesCode: true,
+    },
+    codex: {
+      label: 'ChatGPT',
+      loginTitle: 'Bei ChatGPT anmelden',
+      loginIntro: 'Damit ChatGPT (über Codex) für dich arbeiten kann, melde dich einmalig mit deinem ChatGPT-Konto an, z. B. Plus oder Pro. Dein Browser öffnet sich dafür.',
+      missing: 'Codex wurde nicht gefunden. Bitte den Installer erneut starten, er richtet Codex mit ein.',
+      usesCode: false,
+    },
+  };
 
   const $ = (id) => document.getElementById(id);
-  const state = { next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null, loginTimer: null, assets: [] };
+  const state = {
+    next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null,
+    loginTimer: null, loginEngine: 'claude', runEngine: null, assets: [],
+  };
+
+  const engineOf = (model) => (model.startsWith('codex') ? 'codex' : 'claude');
+  const currentEngine = () => engineOf($('model').value);
 
   // ------------------------------------------------------------ Hilfen
 
@@ -84,6 +107,10 @@
       element = document.createElement('div');
       element.className = 'msg msg-assistant';
       element.innerHTML = renderMarkdown(item.text);
+    } else if (item.kind === 'note') {
+      element = document.createElement('div');
+      element.className = 'step step-note';
+      element.textContent = item.text;
     } else if (item.kind === 'tool') {
       element = document.createElement('div');
       element.className = 'step';
@@ -107,7 +134,7 @@
       element = document.createElement('div');
       element.className = 'msg msg-error';
       element.textContent = item.text;
-      if (item.needs_login) showLogin();
+      if (item.needs_login) showLogin(item.engine || currentEngine());
     }
     if (!element) return;
     const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 120;
@@ -126,7 +153,8 @@
     if (!state.busy) return;
     const seconds = Math.floor((Date.now() - state.startedAt) / 1000);
     const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-    $('working-text').textContent = `Claude arbeitet … ${clock}`;
+    const label = ENGINES[state.runEngine || currentEngine()].label;
+    $('working-text').textContent = `${label} arbeitet … ${clock}`;
   }
 
   async function pollLoop() {
@@ -150,6 +178,7 @@
     if (!message || state.busy) return;
     try {
       await postJson('/api/chat', { message, model: $('model').value });
+      state.runEngine = currentEngine();
       $('prompt').value = '';
       setBusy(true);
       if (state.wake) state.wake();
@@ -233,7 +262,7 @@
           headers: { 'X-Filename': encodeURIComponent(file.name), 'Content-Type': 'application/octet-stream' },
           body: file,
         });
-        toast(`Hochgeladen: ${file.name} – du kannst Claude bitten, assets/${file.name} zu verwenden.`);
+        toast(`Hochgeladen: ${file.name} – du kannst die KI bitten, assets/${file.name} zu verwenden.`);
       } catch (error) {
         toast(`${file.name}: ${error.message}`);
       }
@@ -243,32 +272,46 @@
 
   // ------------------------------------------------------------ Anmeldung
 
-  function showLogin() { $('login').hidden = false; }
+  function showLogin(engine) {
+    const info = ENGINES[engine] || ENGINES.claude;
+    if (state.loginEngine !== engine) {
+      clearInterval(state.loginTimer);
+      $('login-status').textContent = '';
+      $('login-link').hidden = true;
+      $('login-code').hidden = true;
+    }
+    state.loginEngine = engine in ENGINES ? engine : 'claude';
+    $('login-title').textContent = info.loginTitle;
+    $('login-intro').textContent = info.loginIntro;
+    $('login').hidden = false;
+  }
 
-  async function checkLogin(force) {
+  // Liefert den Anmeldestatus: 'ok', 'login' (Anmeldung nötig), 'missing' oder 'unknown'.
+  async function checkLogin(force, engine = currentEngine()) {
     try {
-      const status = await api('/api/auth' + (force ? '?force=1' : ''));
-      if (!status.installed) { toast('Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.'); return false; }
-      if (status.logged_in) { $('login').hidden = true; return true; }
-      showLogin();
+      const status = await api(`/api/auth?engine=${engine}` + (force ? '&force=1' : ''));
+      if (!status.installed) { toast(ENGINES[engine].missing); return 'missing'; }
+      if (status.logged_in) { $('login').hidden = true; return 'ok'; }
+      showLogin(engine);
+      return 'login';
     } catch (error) { toast(error.message); }
-    return false;
+    return 'unknown';
   }
 
   async function pollLogin() {
     const info = await api('/api/login').catch(() => null);
-    if (!info) return;
+    if (!info || info.engine !== state.loginEngine) return;
     $('login-status').textContent = info.state === 'failed' ? 'Die Anmeldung hat nicht geklappt. Bitte erneut versuchen.' : 'Warte auf die Anmeldung im Browser …';
     if (info.url) { $('login-link').href = info.url; $('login-link').hidden = false; }
-    $('login-code').hidden = !/code/i.test(info.output || '');
+    $('login-code').hidden = !ENGINES[state.loginEngine].usesCode || !/code/i.test(info.output || '');
     if (info.state === 'running') return;
     clearInterval(state.loginTimer);
-    if (info.state === 'done' && await checkLogin(true)) toast('Angemeldet – los geht’s!');
+    if (info.state === 'done' && await checkLogin(true, state.loginEngine) === 'ok') toast('Angemeldet – los geht’s!');
   }
 
   async function startLogin() {
     try {
-      await postJson('/api/login');
+      await postJson('/api/login', { engine: state.loginEngine });
       $('login-status').textContent = 'Anmeldung wird gestartet …';
       clearInterval(state.loginTimer);
       state.loginTimer = setInterval(pollLogin, LOGIN_POLL_MS);
@@ -278,8 +321,12 @@
   // ------------------------------------------------------------ Start
 
   function setupControls() {
-    try { $('model').value = localStorage.getItem('studio-model') || 'opus'; } catch (e) { /* ohne Speicher */ }
-    $('model').addEventListener('change', () => { try { localStorage.setItem('studio-model', $('model').value); } catch (e) { /* ohne Speicher */ } });
+    try { $('model').value = localStorage.getItem('studio-model') || DEFAULT_MODEL; } catch (e) { /* ohne Speicher */ }
+    if (!$('model').value) $('model').value = DEFAULT_MODEL;
+    $('model').addEventListener('change', async () => {
+      if (await checkLogin(false) === 'missing') $('model').value = DEFAULT_MODEL;
+      try { localStorage.setItem('studio-model', $('model').value); } catch (e) { /* ohne Speicher */ }
+    });
 
     $('composer').addEventListener('submit', sendPrompt);
     $('prompt').addEventListener('keydown', (event) => {
@@ -287,7 +334,7 @@
     });
     $('stop').addEventListener('click', () => postJson('/api/stop').catch((e) => toast(e.message)));
     $('new-project').addEventListener('click', async () => {
-      if (state.busy) { toast('Claude arbeitet gerade noch.'); return; }
+      if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
       if (!window.confirm('Neues Gespräch beginnen? Deine Videos und Dateien bleiben erhalten.')) return;
       try {
         await postJson('/api/reset');
@@ -317,7 +364,7 @@
 
     $('login-start').addEventListener('click', startLogin);
     $('login-check').addEventListener('click', async () => {
-      if (!await checkLogin(true)) $('login-status').textContent = 'Noch nicht angemeldet.';
+      if (await checkLogin(true, state.loginEngine) !== 'ok') $('login-status').textContent = 'Noch nicht angemeldet.';
     });
     $('login-code-send').addEventListener('click', () => {
       postJson('/api/login/code', { code: $('login-code-input').value }).catch((e) => toast(e.message));
@@ -327,7 +374,9 @@
 
   setupControls();
   window.CMGPresets.init({ api, postJson, toast, prompt: $('prompt'), getAssets: () => state.assets });
-  checkLogin(false);
+  checkLogin(false).then((result) => {
+    if (result === 'missing' && currentEngine() !== 'claude') { $('model').value = DEFAULT_MODEL; checkLogin(false); }
+  });
   refreshFiles();
   setInterval(() => { if (state.busy) refreshFiles(); }, BUSY_FILES_MS);
   setInterval(updateWorkingText, 1000);

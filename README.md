@@ -23,7 +23,7 @@ Dieses Paket installiert alles, was dafür nötig ist. Technische Vorkenntnisse 
 
 - Einen Computer mit **Windows 10/11**, **macOS** oder **Linux** (Ubuntu, Debian, Fedora, Arch)
 - Eine **Internetverbindung** und etwa **3 GB freien Speicherplatz**
-- Ein **Claude-Konto mit Zugang zu Claude Code**, z. B. Claude Pro oder Max
+- Ein **Claude-Konto mit Zugang zu Claude Code**, z. B. Claude Pro oder Max, **oder** ein **ChatGPT-Konto mit Codex-Zugang**, z. B. ChatGPT Plus oder Pro
 - Etwa **15–30 Minuten**. Der Großteil läuft automatisch.
 
 ---
@@ -94,7 +94,7 @@ Wenn du nach deinem Passwort gefragt wirst, gib es ein und drücke Enter. Beim T
 
 Eigene Musik, Logos oder Bilder ziehst du rechts in das Feld **„Eigene Dateien“**. Mit **„Neues Gespräch“** beginnst du ein neues Projekt. Deine Videos bleiben dabei erhalten.
 
-> **Gut zu wissen:** Damit du nicht bei jedem Schritt etwas bestätigen musst, darf Claude im Studio selbstständig Dateien anlegen und Befehle ausführen, etwa zum Rendern. Das Studio ist nur auf deinem eigenen Computer und nur über das Symbol „Motion Studio“ erreichbar. Claude hat dabei grundsätzlich dieselben Rechte wie du. Gib Claude deshalb nur Dateien und Webseiten zur Verarbeitung, denen du vertraust.
+> **Gut zu wissen:** Damit du nicht bei jedem Schritt etwas bestätigen musst, darf Claude im Studio selbstständig Dateien anlegen und Befehle ausführen, etwa zum Rendern. Das Studio ist nur auf deinem eigenen Computer und nur über das Symbol „Motion Studio“ erreichbar. Claude hat dabei grundsätzlich dieselben Rechte wie du. Gib Claude deshalb nur Dateien und Webseiten zur Verarbeitung, denen du vertraust. Für ChatGPT (Codex) gilt dasselbe: Es läuft im Studio ohne eigene Sicherheits-Sandbox. Websuche und Erweiterungen sind dafür abgeschaltet.
 
 **Wo ist mein Studio-Ordner?**
 
@@ -110,7 +110,26 @@ Darin findest du:
 - `assets`: hier legst du eigene Musik, Logos oder Bilder ab
 - `BEISPIEL-PROMPTS.md`: weitere Beispiel-Aufträge
 - `presets.json`: deine eigenen Vorlagen
-- `CLAUDE.md`: die Arbeitsregeln für Claude. Du kannst sie anpassen.
+- `CLAUDE.md`: die Arbeitsregeln für die KI. Sie gelten für Claude und ChatGPT. Du kannst sie anpassen.
+
+---
+
+## ChatGPT statt Claude verwenden
+
+Oben rechts unter **„Modell“** wählst du, wer dein Video baut:
+
+| Auswahl | Dienst | Anmeldung |
+|---|---|---|
+| Opus, Sonnet | Claude (Claude Code) | Claude-Konto, z. B. Pro oder Max |
+| GPT-6-Astra, GPT-6.1-Sol | ChatGPT (über OpenAI Codex) | ChatGPT-Konto, z. B. Plus oder Pro |
+
+<img src="docs/images/modell-auswahl.png" alt="Modellauswahl mit Claude (Opus, Sonnet) und ChatGPT (GPT-6-Astra, GPT-6.1-Sol)" width="420">
+
+Wählst du zum ersten Mal ein GPT-Modell, fragt das Studio nach deiner ChatGPT-Anmeldung. Ein API-Schlüssel ist nicht nötig. Die Nutzung läuft über die Grenzen deines ChatGPT-Abos.
+
+<img src="docs/images/anmeldung-chatgpt.png" alt="Anmeldefenster für ChatGPT im Motion Studio" width="640">
+
+Du kannst auch mitten im Gespräch wechseln. Der neue Dienst kennt den bisherigen Verlauf aber nicht. Beschreib ihm kurz, woran ihr gerade arbeitet, oder beginne ein **„Neues Gespräch“**.
 
 ---
 
@@ -136,7 +155,8 @@ Eigene Vorlagen liegen als `presets.json` im Studio-Ordner. So sind sie in deine
 | Programm | Wofür |
 |---|---|
 | **Claude Code** | Die KI, die deine Videos plant und baut |
-| **Motion Studio** | Die Oberfläche im Browser, über die du mit Claude arbeitest |
+| **Codex** (optional) | Damit kannst du statt Claude auch ChatGPT verwenden. Wird über Node.js installiert. |
+| **Motion Studio** | Die Oberfläche im Browser, über die du mit der KI arbeitest |
 | **Python** mit Playwright, Pillow und NumPy | Steuert das Rendern der Einzelbilder |
 | **Chromium** (über Playwright) | Ein unsichtbarer Browser, der die Animation abfotografiert |
 | **FFmpeg** | Setzt die Einzelbilder zu einer MP4-Datei zusammen |
@@ -164,6 +184,8 @@ Am Ende rendert der Installer automatisch eine kurze Testanimation. So ist siche
 | Das Video zeigt leere oder falsche Bilder | Bitte Claude, `window.seek()`, das Laden der Bilder und Schriften und den Aufnahmezeitpunkt zu prüfen. |
 | Das Video wirkt hektisch | Bitte Claude um weniger Szenen, längere Standzeiten und ruhigere Übergänge. |
 | Fedora: Der Selbsttest meldet fehlendes H.264 | Aktiviere [RPM Fusion](https://rpmfusion.org/Configuration) und installiere `ffmpeg` daraus. |
+| „Codex wurde nicht gefunden“ | Starte den Installer erneut, er richtet Codex mit ein. Codex braucht Node.js. |
+| ChatGPT meldet ein erreichtes Nutzungslimit | Dein ChatGPT-Abo hat sein Kontingent für Codex aufgebraucht. Warte, bis es sich erneuert, oder wechsle oben zu Claude. |
 
 ---
 
@@ -196,9 +218,9 @@ Die Nutzung dieses Projekts erfolgt auf eigene Gefahr. Die Software wird ohne Ge
 - **Programme anderer Anbieter:** Der Installer lädt und installiert Programme anderer Anbieter, unter anderem Claude Code, Python, Playwright mit Chromium, FFmpeg, Node.js, Git und Homebrew. Für diese gelten deren eigene Lizenzen und Nutzungsbedingungen. Für ihre Funktion, Sicherheit und Verfügbarkeit übernehme ich keine Verantwortung.
 - **Selbstständig arbeitende KI:** Claude legt im Studio selbstständig Dateien an, ändert sie und führt Befehle auf deinem Computer aus. KI-Ergebnisse können fehlerhaft oder unerwartet sein. Sichere wichtige Daten regelmäßig und gib Claude nur Dateien und Webseiten, denen du vertraust.
 - **Kosten und Konto:** Für Claude brauchst du ein eigenes Konto mit passendem Abo oder eine API-Abrechnung. Dabei entstehende Kosten und Nutzungslimits liegen bei dir.
-- **Datenübertragung:** Deine Aufträge und die Inhalte, die Claude dafür liest, werden zur Verarbeitung an Anthropic übertragen. Es gelten die Datenschutz- und Nutzungsbedingungen von Anthropic. Verarbeite keine vertraulichen oder personenbezogenen Daten Dritter ohne Berechtigung.
+- **Datenübertragung:** Deine Aufträge und die Inhalte, die die KI dafür liest, werden zur Verarbeitung an Anthropic übertragen, bei Auswahl eines GPT-Modells an OpenAI. Es gelten die Datenschutz- und Nutzungsbedingungen des jeweiligen Anbieters. Verarbeite keine vertraulichen oder personenbezogenen Daten Dritter ohne Berechtigung.
 - **Rechte an Inhalten:** Du bist selbst dafür verantwortlich, dass du die Rechte an verwendeten Inhalten hast, etwa an Musik, Logos, Bildern und Schriften. Das gilt auch für die Nutzung der erzeugten Videos.
-- **Keine Verbindung zu Anthropic:** Claude und Claude Code sind Marken bzw. Produkte von Anthropic. Dieses Projekt ist unabhängig und wird von Anthropic weder unterstützt noch geprüft.
+- **Keine Verbindung zu Anthropic oder OpenAI:** Claude und Claude Code sind Marken bzw. Produkte von Anthropic, ChatGPT und Codex von OpenAI. Dieses Projekt ist unabhängig und wird von keinem der beiden Unternehmen unterstützt oder geprüft.
 
 Soweit gesetzlich zulässig, ist eine Haftung für Schäden aus der Nutzung ausgeschlossen. Davon unberührt bleibt die Haftung für Vorsatz und grobe Fahrlässigkeit, für Schäden aus der Verletzung von Leben, Körper oder Gesundheit sowie nach zwingenden gesetzlichen Vorschriften wie dem Produkthaftungsgesetz.
 

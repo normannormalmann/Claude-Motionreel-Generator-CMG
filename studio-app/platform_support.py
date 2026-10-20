@@ -95,7 +95,9 @@ def tool_environment():
         extra.append(str(Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links"))
     else:
         extra += ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
-    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")])
+    fallback = [str(Path(os.environ.get("APPDATA", "")) / "npm")] if IS_WINDOWS else []
+    # Den npm-Ordner (dort landet Codex) nur als letzte Station durchsuchen.
+    env["PATH"] = os.pathsep.join(extra + [env.get("PATH", "")] + fallback)
     env["PYTHONIOENCODING"] = "utf-8"
     return env
 
@@ -107,6 +109,26 @@ def claude_command():
         return [sys.executable, override] if override.endswith(".py") else [override]
     found = shutil.which("claude", path=tool_environment()["PATH"])
     return [found] if found else None
+
+
+def codex_command():
+    """Befehl zum Starten der Codex-CLI (für Tests über CMG_CODEX_BIN austauschbar)."""
+    override = os.environ.get("CMG_CODEX_BIN")
+    if override:
+        return [sys.executable, override] if override.endswith(".py") else [override]
+    search_path = tool_environment()["PATH"]
+    found = shutil.which("codex", path=search_path)
+    if not found:
+        return None
+    if IS_WINDOWS and found.lower().endswith((".cmd", ".bat")):
+        # npm legt unter Windows nur eine .cmd-Datei an. Über cmd.exe würden Anführungszeichen in den
+        # Argumenten verfälscht – deshalb direkt Node mit dem eigentlichen Startskript aufrufen.
+        script = Path(found).parent / "node_modules" / "@openai" / "codex" / "bin" / "codex.js"
+        node = shutil.which("node", path=search_path)
+        if script.exists() and node:
+            return [node, str(script)]
+        return None
+    return [found]
 
 
 def hidden_process_flags():

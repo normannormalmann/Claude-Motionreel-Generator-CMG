@@ -27,7 +27,9 @@ APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-motion-studio"
 VENV_DIR="$APP_DATA_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
 APP_DIR="$APP_DATA_DIR/app"
-APP_FILES=(studio_app.py claude_bridge.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js)
+# Geprüfte Codex-Version; bewusst festgelegt und nur nach einem Test erhöhen.
+CODEX_VERSION="0.162.1"
+APP_FILES=(studio_app.py claude_bridge.py engines.py stop_studio.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js)
 
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
@@ -258,6 +260,28 @@ install_claude_code() {
   ok "Claude Code installiert"
 }
 
+# Codex (OpenAI) ist optional: Damit lässt sich im Studio ChatGPT statt Claude verwenden.
+# Installation nach ~/.local, damit kein sudo nötig ist.
+install_codex() {
+  if has codex; then
+    ok "Codex bereits installiert"
+    return 0
+  fi
+  if ! has npm; then
+    warn "Codex übersprungen: Node.js fehlt (optional, nur für ChatGPT nötig)."
+    return 0
+  fi
+  step "Installiere Codex (für ChatGPT im Studio)"
+  if npm install -g --prefix "$HOME/.local" "@openai/codex@$CODEX_VERSION" </dev/null; then
+    hash -r
+  fi
+  if has codex; then
+    ok "Codex installiert"
+  else
+    warn "Codex konnte nicht installiert werden. Das Studio funktioniert trotzdem mit Claude."
+  fi
+}
+
 create_venv() {
   if [ -x "$VENV_PYTHON" ] && "$VENV_PYTHON" -c 'import sys' >/dev/null 2>&1; then
     ok "Python-Umgebung vorhanden"
@@ -330,8 +354,22 @@ PYEOF
   ok "CLAUDE.md mit den Studio-Regeln angelegt"
 }
 
+# Ein noch laufendes Studio würde weiter die alte Version zeigen. Läuft gerade ein Auftrag,
+# bleibt es unangetastet, damit kein Render-Lauf verloren geht.
+stop_running_studio() {
+  local rc=0
+  fetch_repo_file "studio-app/stop_studio.py" "$APP_DIR/stop_studio.py"
+  "$VENV_PYTHON" "$APP_DIR/stop_studio.py" "$APP_DATA_DIR" || rc=$?
+  if [ "$rc" -eq 3 ]; then
+    warn "Das Studio arbeitet gerade an einem Auftrag. Schließe es danach und starte es neu, damit die neue Version geladen wird."
+  elif [ "$rc" -ne 0 ]; then
+    warn "Das laufende Studio konnte nicht beendet werden. Bitte schließe es und starte es neu."
+  fi
+}
+
 install_studio_app() {
   step "Installiere die Studio-App (Oberfläche im Browser)"
+  stop_running_studio
   local file
   for file in "${APP_FILES[@]}"; do
     fetch_repo_file "studio-app/$file" "$APP_DIR/$file"
@@ -412,7 +450,7 @@ create_linux_launchers() {
 [Desktop Entry]
 Type=Application
 Name=Motion Studio
-Comment=Videos mit Claude erstellen
+Comment=Videos mit Claude oder ChatGPT erstellen
 Exec="$APP_DATA_DIR/motion-studio.sh"
 Terminal=false
 Icon=$APP_DIR/icon.png
@@ -461,6 +499,7 @@ verify_installation() {
   ok "Python:      $("$VENV_PYTHON" --version 2>&1)"
   ok "FFmpeg:      $(ffmpeg -version 2>/dev/null | head -n 1 | cut -d' ' -f1-3)"
   if has node; then ok "Node.js:     $(node --version)"; else warn "Node.js fehlt (optional)"; fi
+  if has codex; then ok "Codex:       $(codex --version 2>/dev/null | head -n 1)"; else warn "Codex fehlt (optional, nur für ChatGPT nötig)"; fi
 
   "$VENV_PYTHON" -c 'import sys; sys.path.insert(0, sys.argv[1]); import studio_app' "$APP_DIR"     || die "Die Studio-App lässt sich nicht laden."
   ok "Studio-App:  bereit"
@@ -484,7 +523,7 @@ print_next_steps() {
   printf 'Videos landen:  %s/exports\n\n' "$STUDIO_DIR"
   printf 'So geht es weiter:\n'
   printf '  1. Doppelklick auf „Motion Studio“ auf dem Schreibtisch. Das Studio öffnet sich im Browser.\n'
-  printf '  2. Beim ersten Start meldest du dich dort bei Claude an.\n'
+  printf '  2. Beim ersten Start meldest du dich dort bei Claude an (oder bei ChatGPT, wenn du oben „GPT“ wählst).\n'
   printf '  3. Wähle eine Vorlage oder beschreibe dein Video und klicke auf „Senden“.\n\n'
 }
 
@@ -514,6 +553,7 @@ main() {
   if [ "$OS_NAME" = "macOS" ]; then install_macos_packages; else install_linux_packages; fi
   ok "Python: $PYTHON"
   install_claude_code
+  install_codex
   setup_studio
   verify_installation
   print_next_steps
