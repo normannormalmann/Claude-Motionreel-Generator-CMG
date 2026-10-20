@@ -137,7 +137,11 @@ Under **"Modell"** (model) at the top right, you choose who builds your video:
 | Opus, Sonnet | Claude (Claude Code) | Claude account, e.g. Pro or Max |
 | GPT-6-Astra, GPT-6.1-Sol | ChatGPT (via OpenAI Codex) | ChatGPT account, e.g. Plus or Pro |
 
+<img src="docs/images/modell-auswahl.png" alt="Model selection with Claude (Opus, Sonnet) and ChatGPT (GPT-6-Astra, GPT-6.1-Sol)" width="420">
+
 The first time you pick a GPT model, the studio asks you to sign in with ChatGPT. You don't need an API key. Usage counts against your ChatGPT plan's limits.
+
+<img src="docs/images/anmeldung-chatgpt.png" alt="ChatGPT sign-in dialog in the Motion Studio" width="640">
 
 You can also switch in the middle of a conversation. The new service doesn't know the conversation so far, though. Briefly tell it what you're working on, or start a **"Neues Gespräch"** (new conversation).
 

@@ -123,7 +123,11 @@ Oben rechts unter **„Modell“** wählst du, wer dein Video baut:
 | Opus, Sonnet | Claude (Claude Code) | Claude-Konto, z. B. Pro oder Max |
 | GPT-6-Astra, GPT-6.1-Sol | ChatGPT (über OpenAI Codex) | ChatGPT-Konto, z. B. Plus oder Pro |
 
+<img src="docs/images/modell-auswahl.png" alt="Modellauswahl mit Claude (Opus, Sonnet) und ChatGPT (GPT-6-Astra, GPT-6.1-Sol)" width="420">
+
 Wählst du zum ersten Mal ein GPT-Modell, fragt das Studio nach deiner ChatGPT-Anmeldung. Ein API-Schlüssel ist nicht nötig. Die Nutzung läuft über die Grenzen deines ChatGPT-Abos.
+
+<img src="docs/images/anmeldung-chatgpt.png" alt="Anmeldefenster für ChatGPT im Motion Studio" width="640">
 
 Du kannst auch mitten im Gespräch wechseln. Der neue Dienst kennt den bisherigen Verlauf aber nicht. Beschreib ihm kurz, woran ihr gerade arbeitet, oder beginne ein **„Neues Gespräch“**.
 

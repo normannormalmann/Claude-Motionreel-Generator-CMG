@@ -1,6 +1,7 @@
 """Simuliert die Codex-CLI für Tests (exec --json-Ausgabe, login-Befehle)."""
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -18,6 +19,9 @@ def emit(event):
 def main():
     args = sys.argv[1:]
     if args[:2] == ["login", "status"]:
+        if os.environ.get("CMG_FAKE_CODEX_LOGGED_OUT") == "1":
+            print("Not logged in")
+            return 1
         print("Logged in using ChatGPT")
         return 0
     if args[:1] == ["login"]:
