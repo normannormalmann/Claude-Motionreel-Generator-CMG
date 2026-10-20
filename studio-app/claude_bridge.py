@@ -17,6 +17,23 @@ MAX_STDERR_CHARS = 4000
 AUTH_CACHE_SECONDS = 30
 LOGIN_HINT = re.compile(r"log ?in|logged out|api key|authenticat|anmeld|unauthori[sz]ed|oauth", re.IGNORECASE)
 URL_PATTERN = re.compile(r"https://\S+")
+FOLDER_PATTERN = re.compile(r"\w[\w-]{0,79}")
+FOLDER_SEPARATORS = re.compile(r"[^\w]+")
+MAX_FOLDER_TITLE = 40
+
+
+def conversation_folder_name(message, existing_dir, now=None):
+    """Ordnername für ein neues Gespräch, z. B. "2026-10-20_1412_Showreel-für-Studio-Nord"."""
+    first_line = (message.strip().splitlines() or [""])[0]
+    title = FOLDER_SEPARATORS.sub("-", first_line).strip("-_")
+    if len(title) > MAX_FOLDER_TITLE:
+        title = title[:MAX_FOLDER_TITLE].rsplit("-", 1)[0] or title[:MAX_FOLDER_TITLE]
+    stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(now))
+    base = "{}_{}".format(stamp, title or "Gespraech")
+    name, number = base, 2
+    while (Path(existing_dir) / name).exists():
+        name, number = "{}-{}".format(base, number), number + 1
+    return name
 
 
 class BusyError(Exception):
@@ -44,7 +61,7 @@ class StudioBridge:
         self._login_lines = []
         self._login_state = "idle"
         self.items = self._load_json("chat.json", [])
-        self.sessions, self.engine_key = self._load_sessions()
+        self.sessions, self.engine_key, self.folder = self._load_sessions()
         self.busy = False
         self._stopped = False
 
@@ -66,7 +83,9 @@ class StudioBridge:
             sessions = {"claude": data.get("session_id")}
             engine_key = "claude" if data.get("session_id") else None
         sessions = {key: value for key, value in sessions.items() if valid_session_id(value)}
-        return sessions, engine_key
+        folder = data.get("folder")
+        folder = folder if isinstance(folder, str) and FOLDER_PATTERN.fullmatch(folder) else None
+        return sessions, engine_key, folder
 
     def _save_json(self, name, data):
         target = self.data_dir / name
@@ -77,12 +96,21 @@ class StudioBridge:
     def _persist(self):
         self.items = self.items[-MAX_ITEMS:]
         self._save_json("chat.json", self.items)
-        self._save_json("session.json", {"sessions": self.sessions, "engine": self.engine_key})
+        self._save_json("session.json", {"sessions": self.sessions, "engine": self.engine_key, "folder": self.folder})
 
     def _add(self, item):
         with self._lock:
             self.items.append(item)
             self._lock.notify_all()
+
+    @property
+    def exports_dir(self):
+        return self.studio_dir / "exports"
+
+    @property
+    def folder_path(self):
+        """Ordner der Ergebnisse dieses Gesprächs (oder None vor dem ersten Auftrag)."""
+        return self.exports_dir / self.folder if self.folder else None
 
     # ------------------------------------------------------------ Status
 
@@ -132,10 +160,13 @@ class StudioBridge:
                 self.items.append({"kind": "note", "text": "Ab hier arbeitet {0}. {0} kennt den bisherigen "
                                    "Verlauf dieses Gesprächs nicht.".format(engine.label)})
             self.engine_key = engine.key
+            if not self.folder:
+                self.folder = conversation_folder_name(message, self.exports_dir)
             self.items.append({"kind": "user", "text": message})
             self._lock.notify_all()
+        (self.exports_dir / self.folder).mkdir(parents=True, exist_ok=True)
 
-        args = command + engine.chat_args(model, self.sessions.get(engine.key))
+        args = command + engine.chat_args(model, self.sessions.get(engine.key), self.folder)
         session_flags = {} if ps.IS_WINDOWS else {"start_new_session": True}
         try:
             self._process = subprocess.Popen(
@@ -229,6 +260,7 @@ class StudioBridge:
             self.items = []
             self.sessions = {}
             self.engine_key = None
+            self.folder = None
             self._persist()
             self._lock.notify_all()
 

@@ -1,6 +1,9 @@
 # Beispiel-Aufträge für dein Motion Studio
 
-Kopiere einen der Texte unten, füge ihn in Claude Code ein und drücke Enter.
+Kopiere einen der Texte unten, füge ihn im Motion Studio ein und klicke auf „Senden“.
+Das Studio legt für jedes Gespräch einen eigenen Ordner in `exports` an und lässt
+zuerst immer nur eine Vorschau rendern. Die finale Version in voller Auflösung
+bekommst du per Knopf „Finale Version erstellen“ oder mit einer kurzen Bitte.
 Ersetze Angaben in [eckigen Klammern] durch deine eigenen.
 
 ---
@@ -22,14 +25,12 @@ Lies CLAUDE.md und prüfe die vorhandenen Werkzeuge.
 Erstelle dann:
 1. Die HTML-Animation mit window.seek(timeInSeconds).
 2. Ein Python-Renderskript mit Playwright.
-3. Eine Vorschau mit 960 × 540 Pixeln.
-4. Eine Kontaktübersicht der Vorschau.
-5. Nach höchstens zwei visuellen Korrekturrunden
-   den vollständigen MP4-Export.
+3. Eine Kontaktübersicht der wichtigsten Momente.
+4. Nach höchstens zwei visuellen Korrekturrunden
+   eine Vorschau als MP4 mit 960 × 540 Pixeln.
 
 Prüfe die erzeugten Bilder tatsächlich.
 Achte auf lesbare Texte und saubere Szenenübergänge.
-Speichere das fertige Video als exports/showreel.mp4.
 Dokumentiere den genauen Befehl für einen erneuten Export.
 ```
 
@@ -76,7 +77,7 @@ als `music.mp3` in den Ordner `assets`. Dann:
 Ergänze assets/music.mp3 als Musik.
 Passe wichtige Übergänge an den Rhythmus an.
 Blende die Musik am Ende aus.
-Exportiere Video mit H.264 und Audio mit AAC.
+Erstelle eine neue Vorschau mit Ton (Video H.264, Audio AAC).
 ```
 
 ---

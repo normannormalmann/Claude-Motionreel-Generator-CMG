@@ -61,11 +61,15 @@ window.seek(0);
 </script></body></html>"""
 
 
+DEMO_FOLDER = "2026-10-20_1412_Showreel-für-Studio-Nord"
+
+
 def render_demo_media(studio, ffmpeg):
-    """Rendert ein kleines Showreel und Vorschaubilder in den Beispiel-Studio-Ordner."""
+    """Rendert ein kleines Showreel und Vorschaubilder in den Ordner des Beispiel-Gesprächs."""
     html = DEMO_HTML.replace("__SCENES__", json.dumps(SCENES))
     frames = Path(tempfile.mkdtemp())
-    previews = studio / "exports" / "vorschau"
+    results = studio / "exports" / DEMO_FOLDER
+    previews = results / "vorschau"
     previews.mkdir(parents=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -82,7 +86,7 @@ def render_demo_media(studio, ffmpeg):
         browser.close()
     subprocess.run([ffmpeg, "-nostdin", "-y", "-loglevel", "error", "-framerate", str(FPS),
                     "-i", str(frames / "f_%04d.png"), "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                    str(studio / "exports" / "showreel.mp4")], check=True)
+                    str(results / "showreel_vorschau.mp4")], check=True)
     shutil.rmtree(frames, ignore_errors=True)
     (studio / "assets" / "musik.mp3").write_bytes(b"\0" * 3_400_000)
     (studio / "assets" / "logo.png").write_bytes((previews / "vorschau_01.png").read_bytes())
@@ -91,16 +95,16 @@ def render_demo_media(studio, ffmpeg):
 def demo_conversation():
     request = ("Erstelle ein 15-Sekunden-Showreel für mein Designstudio „Studio Nord“: "
                "große Typografie, Creme, Schwarz und Orange, fünf Szenen.")
-    steps = ["Erstellt showreel.html", "Erstellt render.py", "Führt aus: Vorschau in 960 × 540 rendern",
-             "Prüft Bild kontaktbogen.png", "Bearbeitet showreel.html",
-             "Führt aus: MP4 in voller Auflösung exportieren"]
-    answer = ("Dein Showreel ist fertig: **exports/showreel.mp4** (15 Sekunden, 1920 × 1080).\n\n"
+    steps = ["Erstellt showreel.html", "Erstellt render.py", "Prüft Bild kontaktbogen.png",
+             "Bearbeitet showreel.html", "Führt aus: Vorschau in 960 × 540 rendern"]
+    answer = ("Die Vorschau ist fertig: **showreel_vorschau.mp4** (15 Sekunden, 960 × 540).\n\n"
               "- **Szene 1–2:** Titel „Studio Nord“ mit weich einlaufender Typografie\n"
               "- **Szene 3:** Farbwechsel auf Orange, der Balken gibt den Takt vor\n"
               "- **Szene 4–5:** dunkler Abschluss mit ruhigem Ausklang\n\n"
               "Nach der ersten Vorschau habe ich zwei Dinge korrigiert: Der Untertitel in Szene 2 "
               "stand zu kurz, und der Übergang zu Szene 4 hatte einen leeren Frame.\n\n"
-              "Möchtest du noch Musik ergänzen? Lege dazu einfach eine Datei rechts unter „Eigene Dateien“ ab.")
+              "Gefällt sie dir? Dann erstelle ich die finale Version in voller Auflösung. "
+              "Musik kannst du rechts unter „Eigene Dateien“ ablegen.")
     items = [{"kind": "user", "text": request}]
     items += [{"kind": "tool", "text": step, "detail": ""} for step in steps]
     items += [{"kind": "assistant", "text": answer}, {"kind": "done"}]
@@ -213,6 +217,8 @@ def main():
     (studio / "presets.json").write_text(json.dumps({"version": 1, "presets": [DEMO_PRESET]}, ensure_ascii=False),
                                          encoding="utf-8")
     (data / "chat.json").write_text(json.dumps(demo_conversation(), ensure_ascii=False), encoding="utf-8")
+    (data / "session.json").write_text(json.dumps({"sessions": {}, "engine": "claude", "folder": DEMO_FOLDER},
+                                                  ensure_ascii=False), encoding="utf-8")
 
     server = studio_app.create_server(studio, data)
     threading.Thread(target=server.serve_forever, daemon=True).start()

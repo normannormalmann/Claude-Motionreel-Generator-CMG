@@ -181,19 +181,31 @@
     }
   }
 
-  async function sendPrompt(event) {
-    event.preventDefault();
-    const message = $('prompt').value.trim();
-    if (!message || state.busy) return;
+  async function sendMessage(message) {
+    if (!message || state.busy) return false;
     try {
       await postJson('/api/chat', { message, model: $('model').value });
       state.runEngine = currentEngine();
-      $('prompt').value = '';
       setBusy(true);
       if (state.wake) state.wake();
+      return true;
     } catch (error) {
       toast(error.message);
+      return false;
     }
+  }
+
+  async function sendPrompt(event) {
+    event.preventDefault();
+    if (await sendMessage($('prompt').value.trim())) $('prompt').value = '';
+  }
+
+  // Vorschauen heißen *_vorschau.mp4; die volle Auflösung gibt es nur auf ausdrückliche Anfrage.
+  const isPreview = (file) => /vorschau/i.test(file.name);
+
+  function requestFinal(file) {
+    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
+    sendMessage(`Bitte erstelle jetzt die finale Version von ${file.name} in voller Auflösung.`);
   }
 
   // ------------------------------------------------------------ Dateien
@@ -210,7 +222,7 @@
     const container = $('videos');
     container.replaceChildren();
     if (!videos.length && !images.length) {
-      container.innerHTML = '<p class="empty">Noch keine Videos. Starte links mit einem Auftrag.</p>';
+      container.innerHTML = '<p class="empty">Noch keine Videos in diesem Gespräch. Starte links mit einem Auftrag.</p>';
       return;
     }
     videos.forEach((file) => {
@@ -219,6 +231,22 @@
       card.className = 'media-card' + (isNew ? ' is-new' : '');
       card.innerHTML = `<video controls preload="metadata" src="${escapeHtml(mediaUrl(file))}"></video>
         <div class="media-meta"><strong>${escapeHtml(file.name)}</strong><span>${formatSize(file.size)} · ${formatTime(file.modified)}</span></div>`;
+      const actions = document.createElement('div');
+      actions.className = 'media-actions';
+      const badge = document.createElement('span');
+      badge.className = 'media-badge' + (isPreview(file) ? '' : ' is-final');
+      badge.textContent = isPreview(file) ? 'Vorschau' : 'Final';
+      actions.append(badge);
+      if (isPreview(file)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ghost small';
+        button.textContent = 'Finale Version erstellen';
+        button.title = 'Rendert dieses Video in voller Auflösung';
+        button.addEventListener('click', () => requestFinal(file));
+        actions.append(button);
+      }
+      card.append(actions);
       container.append(card);
       if (isNew) toast(`Neues Video: ${file.name}`);
     });
@@ -417,6 +445,8 @@
         $('messages').replaceChildren($('welcome'));
         $('welcome').hidden = false;
         state.next = 0;
+        state.knownVideos = null;
+        refreshFiles();
       } catch (error) { toast(error.message); }
     });
     $('open-folder').addEventListener('click', () => postJson('/api/open', { target: 'studio' }).catch((e) => toast(e.message)));

@@ -22,8 +22,29 @@ APP_SYSTEM_PROMPT = (
     "Du arbeitest im Motion Studio, einer grafischen Oberfläche. Die Person sieht keine Konsole, "
     "nur deine Textantworten und die Videos im Ordner exports. Antworte auf Deutsch, kurz und ohne "
     "Fachjargon. Brauchst du eine Entscheidung oder Freigabe, stelle die Frage am Ende deiner "
-    "Antwort und warte auf die nächste Nachricht. Nenne fertige Videos immer mit ihrem Dateinamen."
+    "Antwort und warte auf die nächste Nachricht. Nenne fertige Videos immer mit ihrem Dateinamen. "
+    "Rendere bei neuen Videos und bei Änderungen immer nur eine Vorschau in niedriger Auflösung "
+    "(halbe Breite und Höhe, z. B. 960 × 540 statt 1920 × 1080) und speichere sie mit der Endung "
+    "_vorschau.mp4. Erstelle die finale Version in voller Auflösung nur, wenn die Person ausdrücklich "
+    "darum bittet, und biete sie am Ende deiner Antwort an."
 )
+
+
+def conversation_instructions(folder):
+    """Hinweis für die KI, wo die Dateien dieses Gesprächs hingehören."""
+    if not folder:
+        return ""
+    return (
+        "Dieses Gespräch hat einen eigenen Ordner. Speichere alle Videos, Vorschaubilder und "
+        "Kontaktübersichten nur in exports/{0}/ und alle Quelldateien wie HTML und Skripte in "
+        "projekte/{0}/. Andere Unterordner gehören zu anderen Gesprächen: Lies oder ändere sie nur, "
+        "wenn die Person ausdrücklich darum bittet."
+    ).format(folder)
+
+
+def system_prompt(folder):
+    extra = conversation_instructions(folder)
+    return APP_SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
 
 
 class RunState:
@@ -113,11 +134,11 @@ class ClaudeEngine:
     def command(self):
         return ps.claude_command()
 
-    def chat_args(self, model, session_id):
+    def chat_args(self, model, session_id, folder=None):
         args = [
             "-p", "--output-format", "stream-json", "--verbose",
             "--model", model, "--permission-mode", "acceptEdits",
-            "--append-system-prompt", APP_SYSTEM_PROMPT,
+            "--append-system-prompt", system_prompt(folder),
         ]
         if session_id:
             args += ["--resume", session_id]
@@ -162,7 +183,7 @@ class CodexEngine:
     def command(self):
         return ps.codex_command()
 
-    def chat_args(self, model, session_id):
+    def chat_args(self, model, session_id, folder=None):
         # Volle Benutzerrechte wie bei Claude (acceptEdits + Bash): Die Codex-Sandbox kann unter Windows
         # nicht zuverlässig rendern. Dafür bekommt Codex wie Claude keine Websuche, keine Apps und keine
         # MCP-Server – fremde Webinhalte sollen nicht ungefragt Befehle mit Benutzerrechten auslösen.
@@ -173,7 +194,7 @@ class CodexEngine:
             "--dangerously-bypass-approvals-and-sandbox", "-m", model,
             "-c", 'web_search="disabled"', "-c", "features.apps=false", "-c", "mcp_servers={}",
             "-c", 'project_doc_fallback_filenames=["CLAUDE.md"]',
-            "-c", "developer_instructions=" + json.dumps(APP_SYSTEM_PROMPT),
+            "-c", "developer_instructions=" + json.dumps(system_prompt(folder)),
         ]
         if session_id:
             args.append(session_id)

@@ -24,7 +24,7 @@ import engines  # noqa: E402
 import media_files  # noqa: E402
 import studio_app  # noqa: E402
 import updates  # noqa: E402
-from claude_bridge import StudioBridge  # noqa: E402
+from claude_bridge import StudioBridge, conversation_folder_name  # noqa: E402
 from engines import describe_codex_item, describe_tool, resolve_model, unwrap_shell  # noqa: E402
 
 WAIT_SECONDS = 20
@@ -96,6 +96,34 @@ class HelperTests(unittest.TestCase):
             data = {"sessions": {"codex": "--evil", "claude": "test-session-1"}, "engine": "codex"}
             (Path(temp) / "session.json").write_text(json.dumps(data), encoding="utf-8")
             self.assertEqual(StudioBridge(temp, temp).sessions, {"claude": "test-session-1"})
+
+    def test_every_run_gets_preview_rule_and_conversation_folder(self):
+        for engine in (engines.ClaudeEngine(), engines.CodexEngine()):
+            args = engine.chat_args("m", None, "2026-10-20_1412_Intro")
+            # Codex bekommt die Anweisungen als JSON-String (TOML-kompatibel, Umlaute maskiert).
+            joined = " ".join(json.loads(a.split("=", 1)[1]) if a.startswith("developer_instructions=") else a
+                              for a in args)
+            self.assertIn("_vorschau.mp4", joined)
+            self.assertIn("ausdrücklich", joined)
+            self.assertIn("exports/2026-10-20_1412_Intro/", joined)
+            self.assertIn("projekte/2026-10-20_1412_Intro/", joined)
+        self.assertNotIn("exports/", " ".join(engines.ClaudeEngine().chat_args("m", None)).replace("im Ordner exports", ""))
+
+    def test_conversation_folder_names_are_safe_and_unique(self):
+        with tempfile.TemporaryDirectory() as temp:
+            name = conversation_folder_name("../../Geheim: Intro für „Café“!", temp, 0)
+            self.assertTrue(name.endswith("_Geheim-Intro-für-Café"), name)
+            self.assertNotIn("/", name)
+            self.assertNotIn(".", name)
+            (Path(temp) / name).mkdir()
+            self.assertEqual(conversation_folder_name("../../Geheim: Intro für „Café“!", temp, 0), name + "-2")
+            self.assertTrue(conversation_folder_name("", temp, 0).endswith("_Gespraech"))
+
+    def test_stored_folder_must_be_a_plain_name(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for bad in ("../ausserhalb", "a/b", ".versteckt", 42):
+                (Path(temp) / "session.json").write_text(json.dumps({"sessions": {}, "folder": bad}), encoding="utf-8")
+                self.assertIsNone(StudioBridge(temp, temp).folder, bad)
 
     def test_safe_upload_name_strips_paths_hidden_files_and_devices(self):
         self.assertEqual(media_files.safe_upload_name("..%2F..%2Fmusic.mp3"), "music.mp3")
@@ -287,7 +315,8 @@ class ChatTests(ServerTestCase):
         self.assertIn("resume=ja", items[6]["text"])
         self.assertIn("modell=gpt-6.1-sol", items[6]["text"])
         saved = json.loads((self.data / "session.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved, {"sessions": {"codex": "test-thread-1"}, "engine": "codex"})
+        self.assertEqual(saved, {"sessions": {"codex": "test-thread-1"}, "engine": "codex",
+                                 "folder": self.server.bridge.folder})
 
     def test_switching_engine_adds_note_and_keeps_each_session(self):
         self.request("POST", "/api/chat", body={"message": "Erst Claude", "model": "opus"})
@@ -338,6 +367,22 @@ class ChatTests(ServerTestCase):
         self.assertEqual(status, 400)
         status, _, _ = self.request("POST", "/api/login", body={"engine": "gibtsnicht"})
         self.assertEqual(status, 400)
+
+    def test_conversation_gets_own_folder_that_survives_restart_and_reset(self):
+        self.request("POST", "/api/chat", body={"message": "Intro für Studio Nord"})
+        self.wait_until_idle()
+        folder = self.server.bridge.folder
+        self.assertIn("Intro-für-Studio-Nord", folder)
+        self.assertTrue((self.studio / "exports" / folder / "fake.mp4").exists())
+        self.assertEqual(StudioBridge(self.studio, self.data).folder, folder)
+        self.request("POST", "/api/chat", body={"message": "Weiter"})
+        self.wait_until_idle()
+        self.assertEqual(self.server.bridge.folder, folder)
+        self.request("POST", "/api/reset", body={})
+        self.assertIsNone(self.server.bridge.folder)
+        self.request("POST", "/api/chat", body={"message": "Ganz neues Video"})
+        self.wait_until_idle()
+        self.assertNotEqual(self.server.bridge.folder, folder)
 
     def test_reset_clears_conversation(self):
         self.request("POST", "/api/chat", body={"message": "Hallo"})
@@ -415,13 +460,44 @@ class FileTests(ServerTestCase):
         status, _, _ = self.request("POST", "/api/upload", body=b"x", headers={"X-Filename": "virus.exe"})
         self.assertEqual(status, 400)
 
-    def test_files_lists_exports_and_assets(self):
-        (self.studio / "exports" / "a.mp4").write_bytes(b"x")
+    def test_files_lists_only_current_conversation_and_assets(self):
+        (self.studio / "exports" / "alt.mp4").write_bytes(b"x")
+        (self.studio / "exports" / "anderes-gespraech").mkdir()
+        (self.studio / "exports" / "anderes-gespraech" / "fremd.mp4").write_bytes(b"x")
         (self.studio / "assets" / "logo.png").write_bytes(b"x")
         _, data, _ = self.request("GET", "/api/files")
         listing = json.loads(data)
-        self.assertEqual([f["name"] for f in listing["exports"]], ["a.mp4"])
+        self.assertEqual(listing["exports"], [])
+        self.assertIsNone(listing["conversation"])
         self.assertEqual(listing["assets"][0]["type"], "image")
+
+        self.request("POST", "/api/chat", body={"message": "Mein Intro"})
+        self.wait_until_idle()
+        folder = self.server.bridge.folder
+        (self.studio / "exports" / folder / "vorschau").mkdir()
+        (self.studio / "exports" / folder / "vorschau" / "bild 1.png").write_bytes(b"x")
+        listing = json.loads(self.request("GET", "/api/files")[1])
+        self.assertEqual(listing["conversation"], folder)
+        self.assertEqual(sorted(f["name"] for f in listing["exports"]), ["fake.mp4", "vorschau/bild 1.png"])
+        image = next(f for f in listing["exports"] if f["type"] == "image")
+        status, body, _ = self.request("GET", image["url"])
+        self.assertEqual((status, body), (200, b"x"))
+
+    def test_open_conversation_folder(self):
+        opened = []
+        with mock.patch.object(studio_app.ps, "open_in_file_manager", opened.append):
+            self.request("POST", "/api/open", body={"target": "conversation"})
+            self.request("POST", "/api/chat", body={"message": "Intro"})
+            self.wait_until_idle()
+            self.request("POST", "/api/open", body={"target": "conversation"})
+        self.assertEqual(opened, [self.studio / "exports", self.studio / "exports" / self.server.bridge.folder])
+
+    def test_favicon_is_served_without_session(self):
+        for path in ("/static/favicon.png", "/favicon.ico", "/static/apple-touch-icon.png"):
+            status, body, response = self.request("GET", path, session=False)
+            self.assertEqual(status, 200, path)
+            self.assertEqual(response.getheader("Content-Type"), "image/png")
+            self.assertTrue(body.startswith(b"\x89PNG"))
 
 
 class BrowserTests(ServerTestCase):
@@ -490,6 +566,31 @@ class BrowserTests(ServerTestCase):
                 self.assertTrue(page.locator("#update-open").is_hidden())
                 page.get_by_role("button", name="Info").click()
                 self.assertEqual(page.locator("#info-version").inner_text(), "Version " + REPO_MANIFEST["cmg"])
+            finally:
+                browser.close()
+
+    def test_preview_video_offers_final_version(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        self.request("POST", "/api/chat", body={"message": "Intro"})
+        self.wait_until_idle()
+        folder = self.studio / "exports" / self.server.bridge.folder
+        (folder / "intro_vorschau.mp4").write_bytes(b"\x00" * 2048)
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                card = page.locator(".media-card", has_text="intro_vorschau.mp4")
+                card.locator(".media-badge", has_text="Vorschau").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(page.locator(".media-card", has_text="fake.mp4").locator(".media-badge").text_content(),
+                                 "Final")
+                card.get_by_role("button", name="Finale Version erstellen").click()
+                page.locator(".msg-user", has_text="finale Version von intro_vorschau.mp4").wait_for(
+                    timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(page.locator("link[rel=icon]").get_attribute("href"), "/static/favicon.png")
             finally:
                 browser.close()
 

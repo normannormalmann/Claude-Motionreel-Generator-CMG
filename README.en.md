@@ -87,8 +87,9 @@ When asked for your password, type it and press Enter. Nothing appears while you
 1. Double-click **"Motion Studio"** on your desktop. On a Mac you'll also find it in Finder under **Applications**. The studio opens in your browser.
 2. The first time, click **"Jetzt anmelden"** (sign in now) and sign in with your Claude account.
 3. Pick a template at the bottom, such as **"Showreel"**, or describe your video in your own words. Then click **"Senden"** (send). You can write in English.
-4. Claude plans, renders and checks the video. The left side shows what Claude is working on. Finished videos appear on the right and play right there.
+4. Claude plans, renders and checks the video. The left side shows what Claude is working on. First you always get a quick low-resolution **preview** ("Vorschau"). It appears on the right and plays right there.
 5. To make changes, just keep writing, for example "Make the second scene slower".
+6. Happy with the preview? Click **"Finale Version erstellen"** (create final version) on the right. Only then is the video rendered at full resolution.
 
 <img src="docs/images/anmeldung.png" alt="Sign-in dialog in Motion Studio" width="640">
 
@@ -104,8 +105,8 @@ The template buttons are in German. Here's an English request you can paste inst
 Create a 15-second motion design showreel for a fictional design studio.
 Format: 1920 × 1080 pixels, 30 fps. Style: editorial, precise, large typography,
 cream background, black text and orange accents. Plan five scenes with different
-motion ideas. No audio for now. Render a 960 × 540 preview and a contact sheet first,
-check the frames, then export the final video as exports/showreel.mp4.
+motion ideas. No audio for now. Create a contact sheet, check the frames, and render
+a 960 × 540 preview. We'll do the full-resolution version once I like the preview.
 ```
 
 More example requests (in German) are in **`BEISPIEL-PROMPTS.md`** in your studio folder.
@@ -120,7 +121,8 @@ More example requests (in German) are in **`BEISPIEL-PROMPTS.md`** in your studi
 
 Inside you'll find:
 
-- `exports`: your finished videos
+- `exports`: your videos, with a subfolder for each conversation. The studio only shows the current conversation's videos on the right.
+- `projekte`: the source files of the animations, also one folder per conversation
 - `assets`: put your own music, logos or images here
 - `BEISPIEL-PROMPTS.md`: more example requests
 - `presets.json`: your own templates

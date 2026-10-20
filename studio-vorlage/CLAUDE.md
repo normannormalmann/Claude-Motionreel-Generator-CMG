@@ -20,11 +20,12 @@
 - Verwende für reproduzierbare Zufallseffekte einen festen Seed.
 
 ## Ausgabe
-- Standard: 1920 × 1080 Pixel, 30 Bilder pro Sekunde.
-- Vorschau zuerst in reduzierter Auflösung rendern.
+- Standard für die finale Version: 1920 × 1080 Pixel, 30 Bilder pro Sekunde.
+- Rendere bei neuen Videos und Änderungen immer nur eine Vorschau in niedriger Auflösung (halbe Breite und Höhe, z. B. 960 × 540) und speichere sie als `<name>_vorschau.mp4`.
+- Die finale Version in voller Auflösung nur, wenn die Person ausdrücklich darum bittet. Biete sie am Ende an.
 - MP4 mit H.264 und Pixelformat yuv420p exportieren.
-- Quelldateien, temporäre Bilder und Ergebnisse getrennt speichern.
-- Ergebnisse gehören in den Ordner exports.
+- Jedes Gespräch hat einen eigenen Ordner (das Studio nennt ihn im Auftrag): Ergebnisse in `exports/<Gespräch>/`, Quelldateien in `projekte/<Gespräch>/`.
+- Temporäre Einzelbilder getrennt von Quelldateien und Ergebnissen speichern.
 - Eigene Medien (Musik, Logos, Bilder) liegen im Ordner assets.
 
 ## Gestaltung
