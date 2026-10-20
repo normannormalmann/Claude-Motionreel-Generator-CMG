@@ -30,7 +30,7 @@
   const state = {
     next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null,
     loginTimer: null, loginEngine: 'claude', runEngine: null, assets: [], update: null, updating: false,
-    chatGeneration: 0, searchTimer: null,
+    chatGeneration: 0, searchTimer: null, epoch: null,
   };
 
   const engineOf = (model) => (model.startsWith('codex') ? 'codex' : 'claude');
@@ -168,6 +168,7 @@
   // Zeigt das (neue oder wieder geöffnete) Gespräch von vorn; laufende Abfragen des alten zählen nicht mehr.
   function reloadConversation() {
     state.chatGeneration += 1;
+    state.epoch = null;
     $('messages').replaceChildren($('welcome'));
     $('welcome').hidden = false;
     state.next = 0;
@@ -182,6 +183,13 @@
         const generation = state.chatGeneration;
         const data = await api(`/api/state?from=${state.next}${state.busy ? '&wait=1' : ''}`);
         if (generation !== state.chatGeneration) continue;
+        // Ein anderer Tab hat ein neues Gespräch begonnen oder ein altes geöffnet.
+        if (state.epoch !== null && data.epoch !== state.epoch) {
+          state.epoch = data.epoch;
+          reloadConversation();
+          continue;
+        }
+        state.epoch = data.epoch;
         data.items.forEach(renderItem);
         state.next = data.next;
         setBusy(data.busy);
@@ -443,7 +451,10 @@
       await postJson('/api/conversations/open', { id });
       $('conversations').hidden = true;
       reloadConversation();
-    } catch (error) { toast(error.message); }
+    } catch (error) {
+      toast(error.message);
+      searchConversations();
+    }
   }
 
   // ------------------------------------------------------------ Updates

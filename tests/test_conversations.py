@@ -52,6 +52,24 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(self.archive.search("gibt es nicht"), [])
         self.assertEqual(self.archive.search("x.html"), [], "Arbeitsschritte werden nicht durchsucht")
 
+    def test_search_ignores_line_breaks_and_survives_odd_files(self):
+        self.archive.save(record("a", "Reel", answer="Das Logo\n\nerscheint   groß."))
+        self.assertEqual([s["id"] for s in self.archive.search("logo erscheint")], ["a"])
+        for name, content in (("liste", '{"id": "liste", "items": ["kein dict"]}'),
+                              ("zeit", '{"id": "zeit", "items": [], "updated": "gestern"}')):
+            (self.archive.folder / (name + ".json")).write_text(content, encoding="utf-8")
+        self.assertEqual([s["id"] for s in self.archive.search("")], ["a"])
+
+    def test_unique_ids_never_overwrite_archived_conversations(self):
+        self.archive.save(record("2026-10-20_1412_Intro", "Alt"))
+        self.assertEqual(self.archive.unique_id("2026-10-20_1412_Intro"), "2026-10-20_1412_Intro-2")
+        self.assertEqual(self.archive.unique_id("neu"), "neu")
+
+    def test_current_conversation_is_not_listed_twice(self):
+        self.archive.save(record("gleich", "Überbleibsel"))
+        results = self.archive.search("", record("gleich", "Aktuell"))
+        self.assertEqual([(s["title"], s["current"]) for s in results], [("Aktuell", True)])
+
     def test_snippet_has_no_markdown_marks(self):
         self.archive.save(record("a", "Reel", answer="Fertig: **reel_vorschau.mp4** in `exports`"))
         self.assertEqual(self.archive.search("vorschau")[0]["snippet"], "Fertig: reel_vorschau.mp4 in exports")

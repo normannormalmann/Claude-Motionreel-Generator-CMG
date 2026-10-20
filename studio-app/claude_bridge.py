@@ -68,6 +68,7 @@ class StudioBridge:
         self.conversation_id = session.get("id") if valid_id(session.get("id")) else None
         self.updated = session.get("updated") if isinstance(session.get("updated"), (int, float)) else 0
         self.archive = ConversationArchive(data_dir)
+        self.epoch = 0
         self.busy = False
         self._stopped = False
 
@@ -127,7 +128,7 @@ class StudioBridge:
 
     def snapshot(self, start):
         with self._lock:
-            return {"items": self.items[start:], "next": len(self.items), "busy": self.busy}
+            return {"items": self.items[start:], "next": len(self.items), "busy": self.busy, "epoch": self.epoch}
 
     def wait_for_items(self, start, timeout):
         with self._lock:
@@ -173,11 +174,11 @@ class StudioBridge:
             self.engine_key = engine.key
             if not self.folder:
                 self.folder = conversation_folder_name(message, (self.exports_dir, self.projects_dir))
-                self.conversation_id = self.conversation_id or new_conversation_id(self.folder)
                 if self.items:
                     # Gespräch aus einer älteren Version: Bisherige Videos liegen direkt in exports.
                     self.items.append({"kind": "note", "text": "Neue Videos dieses Gesprächs landen ab jetzt im "
                                        "Ordner exports/{}.".format(self.folder)})
+            self._ensure_conversation_id()
             self.items.append({"kind": "user", "text": message})
             self._lock.notify_all()
 
@@ -281,10 +282,15 @@ class StudioBridge:
 
     # ------------------------------------------------------------ Gesprächsarchiv
 
+    def _ensure_conversation_id(self):
+        """Jedes Gespräch bekommt eine eigene Kennung, die im Archiv noch nicht vergeben ist."""
+        if not self.conversation_id:
+            self.conversation_id = self.archive.unique_id(new_conversation_id(self.folder))
+
     def _current_record(self):
         if not self.items:
             return None
-        self.conversation_id = self.conversation_id or new_conversation_id(self.folder)
+        self._ensure_conversation_id()
         return {"id": self.conversation_id, "items": list(self.items), "sessions": dict(self.sessions),
                 "engine": self.engine_key, "folder": self.folder, "updated": self.updated or time.time()}
 
@@ -302,12 +308,15 @@ class StudioBridge:
         self.folder = folder if isinstance(folder, str) and FOLDER_PATTERN.fullmatch(folder) else None
         self.conversation_id = record.get("id") if valid_id(record.get("id")) else None
         self.updated = record.get("updated") if isinstance(record.get("updated"), (int, float)) else 0
+        self.epoch += 1  # andere offene Browser-Tabs laden das Gespräch dann neu
         self._persist()
         self._lock.notify_all()
 
     def list_conversations(self, query=""):
         with self._lock:
-            return self.archive.search(query, self._current_record())
+            current = self._current_record()
+        # Das Durchsuchen der Archivdateien darf laufende Aufträge nicht ausbremsen.
+        return self.archive.search(query, current)
 
     def open_conversation(self, conversation_id):
         """Holt ein archiviertes Gespräch zurück; das aktuelle wird vorher archiviert."""
@@ -315,6 +324,7 @@ class StudioBridge:
             if self.busy:
                 raise BusyError()
             if conversation_id == self.conversation_id and self.items:
+                self.archive.remove(conversation_id)  # Überbleibsel, falls das Studio mittendrin beendet wurde
                 return
             record = self.archive.load(conversation_id)
             self._archive_current()

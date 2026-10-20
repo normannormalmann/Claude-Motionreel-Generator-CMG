@@ -7,6 +7,7 @@ import http.client
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -21,6 +22,7 @@ sys.path.insert(0, str(ROOT / "studio-app"))
 os.environ["CMG_CLAUDE_BIN"] = str(ROOT / "tests" / "fake_claude.py")
 os.environ["CMG_CODEX_BIN"] = str(ROOT / "tests" / "fake_codex.py")
 
+import claude_bridge  # noqa: E402
 import engines  # noqa: E402
 import media_files  # noqa: E402
 import studio_app  # noqa: E402
@@ -450,6 +452,32 @@ class ChatTests(ServerTestCase):
         items = self.wait_until_idle()
         self.assertIn("resume=ja", [i for i in items if i["kind"] == "assistant"][-1]["text"])
         self.assertEqual(self.server.bridge.folder, old_folder)
+
+    def test_recycled_folder_name_does_not_overwrite_archive(self):
+        self.request("POST", "/api/chat", body={"message": "Intro"})
+        self.wait_until_idle()
+        first_id = self.server.bridge.conversation_id
+        self.request("POST", "/api/reset", body={})
+        # Ordner von Hand gelöscht: Der gleiche Name kann wieder vergeben werden.
+        for base in ("exports", "projekte"):
+            shutil.rmtree(self.studio / base / first_id)
+        with mock.patch.object(claude_bridge.time, "strftime", return_value=first_id.split("_Intro")[0]):
+            self.request("POST", "/api/chat", body={"message": "Intro"})
+            self.wait_until_idle()
+        self.assertNotEqual(self.server.bridge.conversation_id, first_id)
+        self.request("POST", "/api/reset", body={})
+        titles = [c["id"] for c in json.loads(self.request("GET", "/api/conversations")[1])["conversations"]]
+        self.assertEqual(len(titles), 2)
+        self.assertIn(first_id, titles)
+
+    def test_other_tabs_notice_a_conversation_switch(self):
+        _, data, _ = self.request("GET", "/api/state?from=0")
+        epoch = json.loads(data)["epoch"]
+        self.request("POST", "/api/chat", body={"message": "Erstes"})
+        self.wait_until_idle()
+        self.request("POST", "/api/reset", body={})
+        _, data, _ = self.request("GET", "/api/state?from=0")
+        self.assertNotEqual(json.loads(data)["epoch"], epoch)
 
     def test_open_conversation_is_guarded(self):
         status, _, _ = self.request("POST", "/api/conversations/open", body={"id": "../session"})

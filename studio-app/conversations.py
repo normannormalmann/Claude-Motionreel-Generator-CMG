@@ -43,18 +43,23 @@ def _snippet(text, query):
     return ("…" if start else "") + snippet + ("…" if end < len(text) else "")
 
 
+def _normalize(text):
+    return " ".join(str(text).split())
+
+
 def summarize(record, query=""):
     """Eintrag für die Liste – oder None, wenn die Suche nicht passt."""
     items = record.get("items") or []
     title = conversation_title(items)
     snippet = ""
     if query:
-        texts = [str(i.get("text", "")) for i in items if i.get("kind") in SEARCHABLE_KINDS]
+        # Zeilenumbrüche und doppelte Leerzeichen zählen wie ein Leerzeichen.
+        texts = [_normalize(i.get("text", "")) for i in items if i.get("kind") in SEARCHABLE_KINDS]
         matches = [text for text in texts if query in text.lower()]
         if not matches and query not in title.lower():
             return None
         # Der Titel steht schon da; als Ausschnitt lieber eine andere passende Nachricht zeigen.
-        others = [text for text in matches if text.strip().splitlines()[0][:MAX_TITLE] != title]
+        others = [text for text in matches if not text.startswith(_normalize(title))]
         snippet = _snippet(others[0], query) if others else ""
     return {
         "id": record["id"],
@@ -67,9 +72,16 @@ def summarize(record, query=""):
     }
 
 
+def _valid_record(record):
+    return (isinstance(record, dict) and valid_id(record.get("id")) and isinstance(record.get("items"), list)
+            and all(isinstance(item, dict) for item in record["items"])
+            and isinstance(record.get("updated", 0), (int, float)))
+
+
 class ConversationArchive:
     def __init__(self, data_dir):
         self.folder = Path(data_dir) / "conversations"
+        self._cache = {}  # Pfad -> (Änderungszeit, Gespräch): Die Suche liest nur Geändertes neu.
 
     def _path(self, conversation_id):
         if not valid_id(conversation_id):
@@ -99,24 +111,43 @@ class ConversationArchive:
         except OSError:
             pass
 
+    def exists(self, conversation_id):
+        return valid_id(conversation_id) and self._path(conversation_id).exists()
+
+    def unique_id(self, base):
+        """Eine Kennung, die es im Archiv noch nicht gibt (z. B. nach einem gelöschten Ordner)."""
+        candidate, number = base, 2
+        while self.exists(candidate):
+            candidate, number = "{}-{}".format(base, number), number + 1
+        return candidate
+
+    def _read(self, path):
+        try:
+            mtime = path.stat().st_mtime
+            cached = self._cache.get(path)
+            if cached and cached[0] == mtime:
+                return mtime, cached[1]
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not _valid_record(record):
+            return None
+        self._cache[path] = (mtime, record)
+        return mtime, record
+
     def records(self):
         if not self.folder.is_dir():
             return []
-        files = sorted(self.folder.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        result = []
-        for path in files[:MAX_ARCHIVED]:
-            try:
-                record = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if isinstance(record, dict) and valid_id(record.get("id")) and isinstance(record.get("items"), list):
-                result.append(record)
-        return result
+        entries = [entry for entry in (self._read(path) for path in self.folder.glob("*.json")) if entry]
+        entries.sort(key=lambda entry: entry[0], reverse=True)
+        return [record for _, record in entries[:MAX_ARCHIVED]]
 
     def search(self, query, current=None):
         """Gespräche, neueste zuerst; mit Suchbegriff nur die passenden (Titel und alle Nachrichten)."""
-        query = " ".join(str(query or "").lower().split())
-        records = ([current] if current else []) + self.records()
+        query = _normalize(query or "").lower()
+        current_id = current["id"] if current else None
+        archived = [record for record in self.records() if record["id"] != current_id]
+        records = ([current] if current else []) + archived
         summaries = []
         for record in records:
             summary = summarize(record, query)
