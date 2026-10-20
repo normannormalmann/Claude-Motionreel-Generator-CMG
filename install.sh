@@ -8,11 +8,17 @@
 # Optionale Umgebungsvariablen:
 #   CMG_STUDIO_DIR      Zielordner (Standard: ~/Dokumente bzw. ~/Documents/Claude-Motion-Studio)
 #   CMG_NONINTERACTIVE  1 = keine Rückfragen (z. B. für automatische Tests)
+#   CMG_UPDATE          1 = Update aus dem Studio heraus (keine Systempakete, kein Passwort)
+#   CMG_REF             Commit, aus dem alle Dateien geladen werden (Standard: main)
 set -Eeuo pipefail
 
-REPO_RAW="https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-Generator-CMG/main"
+# Beim Update aus dem Studio kommen alle Dateien aus genau dem geprüften Commit.
+REPO_REF="main"
+if [[ "${CMG_REF:-}" =~ ^[0-9a-f]{40}$ ]]; then REPO_REF="$CMG_REF"; fi
+REPO_RAW="https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-Generator-CMG/$REPO_REF"
 STUDIO_DIR=""
 NONINTERACTIVE="${CMG_NONINTERACTIVE:-0}"
+UPDATE_MODE="${CMG_UPDATE:-0}"
 MIN_PYTHON_MINOR=9
 PREFERRED_PYTHONS=(python3.13 python3.12 python3.11 python3.10 python3)
 PYTHON_PACKAGES=(playwright pillow numpy)
@@ -27,9 +33,11 @@ APP_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-motion-studio"
 VENV_DIR="$APP_DATA_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
 APP_DIR="$APP_DATA_DIR/app"
-# Geprüfte Codex-Version; bewusst festgelegt und nur nach einem Test erhöhen.
-CODEX_VERSION="0.162.1"
-APP_FILES=(studio_app.py claude_bridge.py engines.py stop_studio.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js)
+# Geprüfte Versionen von Codex und den Python-Paketen stehen in versions.json (siehe load_versions).
+CODEX_VERSION=""
+PINNED_PACKAGES=()
+VERSIONS_FILE=""
+APP_FILES=(studio_app.py claude_bridge.py engines.py stop_studio.py updates.py update_runner.py platform_support.py media_files.py presets.py make_icon.py static/index.html static/app.css static/app.js static/presets.js)
 
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
@@ -58,6 +66,16 @@ die() {
 on_error() { die "Unerwarteter Fehler (Zeile $1). Bitte das Protokoll an den Support schicken."; }
 
 is_interactive() { [ "$NONINTERACTIVE" != "1" ]; }
+is_update() { [ "$UPDATE_MODE" = "1" ]; }
+
+# Erfolg, wenn Version $1 mindestens so neu ist wie $2.
+version_at_least() {
+  "$PYTHON" - "$1" "$2" <<'PYVER'
+import sys
+def parse(text): return tuple(int(part) for part in text.split("."))
+sys.exit(0 if parse(sys.argv[1]) >= parse(sys.argv[2]) else 1)
+PYVER
+}
 
 run_root() {
   if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
@@ -101,6 +119,57 @@ fetch_repo_file() {
 fetch_template() { fetch_repo_file "studio-vorlage/$1" "$2"; }
 
 # ---------------------------------------------------------------- Schritte
+
+# Liest die geprüften Versionen aus versions.json (im Repo bzw. von GitHub).
+load_versions() {
+  local values line first=1
+  # Dieselbe Datei wird am Ende als installierte Version gespeichert (save_installed_versions).
+  VERSIONS_FILE="$(mktemp)"
+  values="$(mktemp)"
+  fetch_repo_file versions.json "$VERSIONS_FILE"
+  "$PYTHON" - "$VERSIONS_FILE" "${PYTHON_PACKAGES[@]}" >"$values" <<'PYVERSIONS' || die "versions.json ist ungültig."
+import json, re, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+version = re.compile(r"\d+(\.\d+)+")
+if not version.fullmatch(data["codex"]):
+    sys.exit("codex")
+print(data["codex"])
+for name in sys.argv[2:]:
+    number = data["python_packages"].get(name, "")
+    if not version.fullmatch(number):
+        sys.exit(name)
+    print("{}=={}".format(name, number))
+PYVERSIONS
+  PINNED_PACKAGES=()
+  while IFS= read -r line; do
+    if [ "$first" = 1 ]; then CODEX_VERSION="$line"; first=0; else PINNED_PACKAGES+=("$line"); fi
+  done <"$values"
+  rm -f "$values"
+  ok "Geprüfte Versionen: Codex $CODEX_VERSION, ${PINNED_PACKAGES[*]}"
+}
+
+# Beim Update aus dem Studio gibt es niemanden, der ein Passwort eingeben könnte:
+# Systempakete werden dann nicht angefasst, nur geprüft.
+use_existing_system_tools() {
+  local candidates=() brew_bin
+  if [ "$OS_NAME" = "macOS" ]; then
+    for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+      if [ -x "$brew_bin" ]; then eval "$("$brew_bin" shellenv)"; break; fi
+    done
+    candidates=(/opt/homebrew/bin/python3.13 /usr/local/bin/python3.13)
+  else
+    detect_linux_pkg_manager
+  fi
+  PYTHON="$(find_python ${candidates[@]+"${candidates[@]}"})" \
+    || die "Python wurde nicht gefunden. Bitte den Installer einmal von Hand starten."
+  has ffmpeg || die "FFmpeg fehlt. Bitte den Installer einmal von Hand starten."
+  ok "Systemprogramme vorhanden"
+}
+
+# Hält die installierte Version fest – erst ganz am Ende, damit ein abgebrochenes Update erneut angeboten wird.
+save_installed_versions() {
+  mv -f "$VERSIONS_FILE" "$APP_DIR/versions.json"
+}
 
 detect_platform() {
   case "$(uname -s)" in
@@ -263,9 +332,14 @@ install_claude_code() {
 # Codex (OpenAI) ist optional: Damit lässt sich im Studio ChatGPT statt Claude verwenden.
 # Installation nach ~/.local, damit kein sudo nötig ist.
 install_codex() {
+  # Ist Codex mindestens so neu wie die geprüfte Version, bleibt es unverändert (nie herabstufen).
+  local installed=""
   if has codex; then
-    ok "Codex bereits installiert"
-    return 0
+    installed="$(codex --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -n 1 || true)"
+    if [ -n "$installed" ] && version_at_least "$installed" "$CODEX_VERSION"; then
+      ok "Codex bereits installiert ($installed)"
+      return 0
+    fi
   fi
   if ! has npm; then
     warn "Codex übersprungen: Node.js fehlt (optional, nur für ChatGPT nötig)."
@@ -317,8 +391,15 @@ install_chromium_deps_best_effort() {
 install_render_tools() {
   step "Installiere die Render-Werkzeuge (Playwright, Chromium, Pillow, NumPy)"
   "$VENV_PYTHON" -m pip install --disable-pip-version-check --upgrade pip
-  "$VENV_PYTHON" -m pip install --disable-pip-version-check --upgrade "${PYTHON_PACKAGES[@]}"
-  if [ "$PKG_MANAGER" = "apt-get" ]; then
+  if ! "$VENV_PYTHON" -m pip install --disable-pip-version-check "${PINNED_PACKAGES[@]}"; then
+    # Ältere Python-Versionen bekommen die neuesten dazu passenden Pakete.
+    warn "Die geprüften Paketversionen passen nicht zu diesem Python – installiere die neuesten passenden."
+    "$VENV_PYTHON" -m pip install --disable-pip-version-check --upgrade "${PYTHON_PACKAGES[@]}"
+  fi
+  if is_update; then
+    # Systembibliotheken für Chromium wurden bei der Erstinstallation eingerichtet (dafür bräuchte es sudo).
+    "$VENV_PYTHON" -m playwright install chromium </dev/null
+  elif [ "$PKG_MANAGER" = "apt-get" ]; then
     "$VENV_PYTHON" -m playwright install --with-deps chromium </dev/null
   else
     install_chromium_deps_best_effort
@@ -370,10 +451,17 @@ stop_running_studio() {
 install_studio_app() {
   step "Installiere die Studio-App (Oberfläche im Browser)"
   stop_running_studio
-  local file
+  # Erst alles laden, dann gemeinsam austauschen: Ein Abbruch hinterlässt kein halb neues Studio.
+  local file staging
+  staging="$(mktemp -d)"
   for file in "${APP_FILES[@]}"; do
-    fetch_repo_file "studio-app/$file" "$APP_DIR/$file"
+    fetch_repo_file "studio-app/$file" "$staging/$file"
   done
+  for file in "${APP_FILES[@]}"; do
+    mkdir -p "$(dirname "$APP_DIR/$file")"
+    mv -f "$staging/$file" "$APP_DIR/$file"
+  done
+  rm -rf "$staging"
   "$VENV_PYTHON" - "$APP_DATA_DIR/config.json" "$STUDIO_DIR" <<'PYCONF'
 import json, sys
 with open(sys.argv[1], "w", encoding="utf-8") as handle:
@@ -550,12 +638,20 @@ main() {
   step "Prüfe das System"
   detect_platform
   resolve_studio_dir
-  if [ "$OS_NAME" = "macOS" ]; then install_macos_packages; else install_linux_packages; fi
+  if is_update; then
+    use_existing_system_tools
+  elif [ "$OS_NAME" = "macOS" ]; then
+    install_macos_packages
+  else
+    install_linux_packages
+  fi
   ok "Python: $PYTHON"
+  load_versions
   install_claude_code
   install_codex
   setup_studio
   verify_installation
+  save_installed_versions
   print_next_steps
   offer_to_start
 }

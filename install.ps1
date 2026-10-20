@@ -7,13 +7,17 @@
 # Optionale Umgebungsvariablen:
 #   CMG_STUDIO_DIR      Zielordner (Standard: Dokumente\Claude-Motion-Studio)
 #   CMG_NONINTERACTIVE  1 = keine Rückfragen (z. B. für automatische Tests)
+#   CMG_UPDATE          1 = Update aus dem Studio heraus (gesetzt vom Update-Helfer)
+#   CMG_REF             Commit, aus dem alle Dateien geladen werden (Standard: main)
 #Requires -Version 5.1
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$RepoRaw = 'https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-Generator-CMG/main'
+# Beim Update aus dem Studio kommen alle Dateien aus genau dem geprüften Commit.
+$RepoRef = if ($env:CMG_REF -cmatch '^[0-9a-f]{40}\z') { $env:CMG_REF } else { 'main' }
+$RepoRaw = "https://raw.githubusercontent.com/normannormalmann/Claude-Motionreel-Generator-CMG/$RepoRef"
 $FfmpegZipUrl = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
 $StudioDir = if ($env:CMG_STUDIO_DIR) { $env:CMG_STUDIO_DIR } else { Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Claude-Motion-Studio' }
 $NonInteractive = $env:CMG_NONINTERACTIVE -eq '1'
@@ -28,9 +32,11 @@ $VenvDir = Join-Path $AppDataDir 'venv'
 $VenvPython = Join-Path $VenvDir 'Scripts\python.exe'
 $VenvPythonW = Join-Path $VenvDir 'Scripts\pythonw.exe'
 $AppDir = Join-Path $AppDataDir 'app'
-# Geprüfte Codex-Version; bewusst festgelegt und nur nach einem Test erhöhen.
-$CodexVersion = '0.162.1'
-$AppFiles = @('studio_app.py', 'claude_bridge.py', 'engines.py', 'stop_studio.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js')
+# Geprüfte Versionen von Codex und den Python-Paketen stehen in versions.json (siehe Read-Versions).
+$CodexVersion = $null
+$PinnedPackages = @()
+$VersionsFile = $null
+$AppFiles = @('studio_app.py', 'claude_bridge.py', 'engines.py', 'stop_studio.py', 'updates.py', 'update_runner.py', 'platform_support.py', 'media_files.py', 'presets.py', 'make_icon.py', 'static/index.html', 'static/app.css', 'static/app.js', 'static/presets.js')
 $HasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- Hilfen
@@ -125,6 +131,28 @@ function Get-Template([string]$Name, [string]$Destination) {
 
 # ---------------------------------------------------------------- Schritte
 
+# Liest die geprüften Versionen aus versions.json (im Repo bzw. von GitHub).
+function Read-Versions {
+    # Dieselbe Datei wird am Ende als installierte Version gespeichert (Save-InstalledVersions).
+    $script:VersionsFile = (New-TemporaryFile).FullName
+    Get-RepoFile 'versions.json' $VersionsFile
+    $versions = [IO.File]::ReadAllText($VersionsFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $versionPattern = '^\d+(\.\d+)+\z'
+    if ($versions.codex -notmatch $versionPattern) { throw 'versions.json ist ungültig (codex).' }
+    $script:CodexVersion = $versions.codex
+    $script:PinnedPackages = foreach ($name in $PythonPackages) {
+        $version = $versions.python_packages.$name
+        if ($version -notmatch $versionPattern) { throw "versions.json ist ungültig ($name)." }
+        "$name==$version"
+    }
+    Write-Ok ("Geprüfte Versionen: Codex $CodexVersion, " + ($PinnedPackages -join ', '))
+}
+
+# Hält die installierte Version fest – erst ganz am Ende, damit ein abgebrochenes Update erneut angeboten wird.
+function Save-InstalledVersions {
+    Move-Item -LiteralPath $VersionsFile -Destination (Join-Path $AppDir 'versions.json') -Force
+}
+
 function Install-Git {
     if (Test-Command 'git') { Write-Ok 'Git bereits installiert'; return }
     Install-WingetPackage 'Git.Git' 'Git'
@@ -157,8 +185,20 @@ function Install-NodeJs {
 }
 
 # Codex (OpenAI) ist optional: Damit lässt sich im Studio ChatGPT statt Claude verwenden.
+function Get-CodexVersion {
+    try {
+        $text = & codex --version 2>$null | Select-Object -First 1
+        if ($text -match '(\d+(\.\d+)+)') { return [version]$Matches[1] }
+    } catch { }
+    return $null
+}
+
 function Install-Codex {
-    if (Test-Command 'codex') { Write-Ok 'Codex bereits installiert'; return }
+    # Ist Codex mindestens so neu wie die geprüfte Version, bleibt es unverändert (nie herabstufen).
+    if (Test-Command 'codex') {
+        $installed = Get-CodexVersion
+        if ($installed -and $installed -ge [version]$CodexVersion) { Write-Ok "Codex bereits installiert ($installed)"; return }
+    }
     if (-not (Test-Command 'npm')) { Write-Warn 'Codex übersprungen: Node.js fehlt (optional, nur für ChatGPT nötig).'; return }
     Write-Step 'Installiere Codex (für ChatGPT im Studio)'
     try {
@@ -226,7 +266,13 @@ function New-StudioVenv([string]$Python) {
 function Install-RenderTools {
     Write-Step 'Installiere die Render-Werkzeuge (Playwright, Chromium, Pillow, NumPy)'
     Invoke-Native $VenvPython @('-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade', 'pip') 'pip konnte nicht aktualisiert werden'
-    Invoke-Native $VenvPython (@('-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade') + $PythonPackages) 'Die Python-Pakete konnten nicht installiert werden'
+    try {
+        Invoke-Native $VenvPython (@('-m', 'pip', 'install', '--disable-pip-version-check') + $PinnedPackages) 'Die geprüften Paketversionen ließen sich nicht installieren'
+    } catch {
+        # Ältere Python-Versionen bekommen die neuesten dazu passenden Pakete.
+        Write-Warn "$($_.Exception.Message). Installiere stattdessen die neuesten passenden Versionen."
+        Invoke-Native $VenvPython (@('-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade') + $PythonPackages) 'Die Python-Pakete konnten nicht installiert werden'
+    }
     Invoke-Native $VenvPython @('-m', 'playwright', 'install', 'chromium') 'Chromium konnte nicht installiert werden'
     Write-Ok 'Render-Werkzeuge installiert'
 }
@@ -264,9 +310,17 @@ function Stop-RunningStudio {
 function Install-StudioApp {
     Write-Step 'Installiere die Studio-App (Oberfläche im Browser)'
     Stop-RunningStudio
+    # Erst alles laden, dann gemeinsam austauschen: Ein Abbruch hinterlässt kein halb neues Studio.
+    $staging = Join-Path $env:TEMP ('cmg-app-' + [guid]::NewGuid().ToString('N'))
     foreach ($file in $AppFiles) {
-        Get-RepoFile "studio-app/$file" (Join-Path $AppDir ($file -replace '/', '\'))
+        Get-RepoFile "studio-app/$file" (Join-Path $staging ($file -replace '/', '\'))
     }
+    foreach ($file in $AppFiles) {
+        $target = Join-Path $AppDir ($file -replace '/', '\')
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Move-Item -LiteralPath (Join-Path $staging ($file -replace '/', '\')) -Destination $target -Force
+    }
+    Remove-Item -LiteralPath $staging -Recurse -Force
     $config = @{ studio_dir = $StudioDir } | ConvertTo-Json
     [IO.File]::WriteAllText((Join-Path $AppDataDir 'config.json'), $config, (New-Object Text.UTF8Encoding $false))
     Invoke-Native $VenvPython @((Join-Path $AppDir 'make_icon.py'), $AppDir) 'Das App-Symbol konnte nicht erstellt werden'
@@ -368,6 +422,7 @@ function Main {
 
     Write-Step 'Prüfe und installiere die benötigten Programme'
     Update-SessionPath
+    Read-Versions
     Install-Git
     Install-ClaudeCode
     Install-NodeJs
@@ -377,6 +432,7 @@ function Main {
 
     Initialize-Studio $python
     Test-Installation
+    Save-InstalledVersions
     Show-NextSteps
 }
 

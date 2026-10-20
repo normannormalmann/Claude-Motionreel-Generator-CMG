@@ -5,6 +5,8 @@
   const BUSY_FILES_MS = 6000;
   const LOGIN_POLL_MS = 1500;
   const MAX_THUMBS = 9;
+  const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
+  const UPDATE_GIVE_UP_MS = 30 * 60 * 1000;
   const DEFAULT_MODEL = 'opus';
   const ENGINES = {
     claude: {
@@ -26,7 +28,7 @@
   const $ = (id) => document.getElementById(id);
   const state = {
     next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null,
-    loginTimer: null, loginEngine: 'claude', runEngine: null, assets: [],
+    loginTimer: null, loginEngine: 'claude', runEngine: null, assets: [], update: null, updating: false,
   };
 
   const engineOf = (model) => (model.startsWith('codex') ? 'codex' : 'claude');
@@ -147,6 +149,10 @@
     state.busy = busy;
     $('working').hidden = !busy;
     $('send').disabled = busy;
+    if (!$('update').hidden && !state.updating && !$('update-start').hidden) {
+      $('update-start').disabled = busy;
+      $('update-status').textContent = busy ? 'Warte, bis der laufende Auftrag fertig ist.' : '';
+    }
   }
 
   function updateWorkingText() {
@@ -166,7 +172,10 @@
         setBusy(data.busy);
         if (!data.busy) await sleep(IDLE_POLL_MS);
       } catch (error) {
-        toast(error instanceof TypeError ? 'Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.' : error.message);
+        // Während eines Updates ist das Studio absichtlich kurz weg.
+        if (!state.updating) {
+          toast(error instanceof TypeError ? 'Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.' : error.message);
+        }
         await sleep(5000);
       }
     }
@@ -318,6 +327,73 @@
     } catch (error) { toast(error.message); }
   }
 
+  // ------------------------------------------------------------ Updates
+
+  function openUpdateDialog() {
+    const info = state.update;
+    if (!info) return;
+    $('update-title').textContent = 'Update verfügbar';
+    $('update-intro').textContent = `Version ${info.latest} ist verfügbar. Installiert ist ${info.current ? `Version ${info.current}` : 'eine ältere Version'}.`;
+    $('update-changes').replaceChildren(...info.changes.map((change) => {
+      const item = document.createElement('li');
+      const versions = document.createElement('span');
+      versions.textContent = change.from ? ` ${change.from} → ${change.to}` : ` neu: ${change.to}`;
+      item.append(change.name, versions);
+      return item;
+    }));
+    $('update-note').hidden = false;
+    $('update-start').hidden = false;
+    $('update-start').disabled = state.busy;
+    $('update-close').textContent = 'Später';
+    $('update-status').textContent = state.busy ? 'Warte, bis der laufende Auftrag fertig ist.' : '';
+    $('update').hidden = false;
+  }
+
+  function showUpdateFailure(result) {
+    $('update-title').textContent = 'Update hat nicht geklappt';
+    $('update-intro').textContent = `${result.message || 'Beim Update ist ein Fehler aufgetreten.'} Das Studio läuft mit der bisherigen Version weiter. Du kannst es später erneut versuchen.`;
+    $('update-changes').replaceChildren();
+    $('update-note').hidden = true;
+    $('update-start').hidden = true;
+    $('update-close').textContent = 'Schließen';
+    $('update-status').textContent = result.log ? `Protokoll: ${result.log}` : '';
+    $('update').hidden = false;
+  }
+
+  async function checkUpdate(force) {
+    try {
+      const info = await api('/api/update' + (force ? '?force=1' : ''));
+      state.update = info;
+      $('info-version').textContent = info.current ? `Version ${info.current}` : '';
+      $('update-open').hidden = !info.available;
+      if (info.result) {
+        if (info.result.ok) toast(`Update installiert – du nutzt jetzt Version ${info.result.version}.`);
+        else showUpdateFailure(info.result);
+        postJson('/api/update/ack').catch(() => { /* wird beim nächsten Start erneut gemeldet */ });
+      }
+    } catch (error) { /* Die Update-Prüfung ist optional. */ }
+  }
+
+  async function startUpdate() {
+    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
+    $('update-start').disabled = true;
+    $('update-close').disabled = true;
+    try {
+      await postJson('/api/update/start');
+      state.updating = true;
+      $('update-status').textContent = 'Das Studio wird aktualisiert … Das kann einige Minuten dauern. Danach öffnet es sich in einem neuen Tab, und du kannst diesen hier schließen.';
+      setTimeout(() => {
+        $('update-status').textContent = 'Das Studio hat sich nicht wieder gemeldet. Starte es bitte über das Symbol „Motion Studio“. Es zeigt dann, ob das Update geklappt hat.';
+        $('update-close').disabled = false;
+        $('update-close').textContent = 'Schließen';
+      }, UPDATE_GIVE_UP_MS);
+    } catch (error) {
+      $('update-status').textContent = error.message;
+      $('update-start').disabled = false;
+      $('update-close').disabled = false;
+    }
+  }
+
   // ------------------------------------------------------------ Start
 
   function setupControls() {
@@ -360,7 +436,15 @@
     $('info-open').addEventListener('click', () => { info.hidden = false; $('info-close').focus(); });
     $('info-close').addEventListener('click', () => { info.hidden = true; });
     info.addEventListener('click', (event) => { if (event.target === info) info.hidden = true; });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') info.hidden = true; });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      info.hidden = true;
+      if (!state.updating) $('update').hidden = true;
+    });
+
+    $('update-open').addEventListener('click', openUpdateDialog);
+    $('update-start').addEventListener('click', startUpdate);
+    $('update-close').addEventListener('click', () => { $('update').hidden = true; });
 
     $('login-start').addEventListener('click', startLogin);
     $('login-check').addEventListener('click', async () => {
@@ -378,6 +462,8 @@
     if (result === 'missing' && currentEngine() !== 'claude') { $('model').value = DEFAULT_MODEL; checkLogin(false); }
   });
   refreshFiles();
+  checkUpdate(false);
+  setInterval(() => checkUpdate(false), UPDATE_CHECK_MS);
   setInterval(() => { if (state.busy) refreshFiles(); }, BUSY_FILES_MS);
   setInterval(updateWorkingText, 1000);
   pollLoop();

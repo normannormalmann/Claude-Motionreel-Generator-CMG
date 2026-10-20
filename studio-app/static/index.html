@@ -16,6 +16,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <button class="primary small" id="update-open" type="button" aria-haspopup="dialog" hidden>Update verfügbar</button>
       <label class="model-select">
         <span>Modell</span>
         <select id="model">
@@ -118,10 +119,25 @@
         <li><span>E-Mail</span><a href="mailto:hey@normanschoenherr.de">hey@normanschoenherr.de</a></li>
         <li><span>Instagram</span><a href="https://www.instagram.com/normanschonherr/" target="_blank" rel="noopener noreferrer">@normanschonherr</a></li>
       </ul>
+      <p class="fine" id="info-version"></p>
       <p class="fine">Nutzung auf eigene Gefahr: Claude arbeitet selbstständig auf deinem Computer, und KI-Ergebnisse können fehlerhaft sein. Details im <a href="https://github.com/normannormalmann/Claude-Motionreel-Generator-CMG#haftungsausschluss" target="_blank" rel="noopener noreferrer">Haftungsausschluss</a>.</p>
       <p class="fine">Claude und Claude Code sind Produkte von Anthropic, ChatGPT und Codex sind Produkte von OpenAI. CMG ist ein unabhängiges Projekt und steht mit keinem der beiden Unternehmen in Verbindung.</p>
       <div class="dialog-actions">
         <button class="primary" id="info-close" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="update" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
+      <h2 id="update-title">Update verfügbar</h2>
+      <p id="update-intro"></p>
+      <ul class="update-changes" id="update-changes"></ul>
+      <p class="fine" id="update-note">Während des Updates schließt sich das Studio kurz und öffnet sich danach von selbst in einem neuen Tab. Deine Videos, Dateien, Vorlagen und Gespräche bleiben erhalten.</p>
+      <p class="login-status" id="update-status" role="status"></p>
+      <div class="dialog-actions">
+        <button class="primary" id="update-start" type="button">Jetzt aktualisieren</button>
+        <button class="ghost" id="update-close" type="button">Später</button>
       </div>
     </div>
   </div>

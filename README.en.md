@@ -147,6 +147,21 @@ You can also switch in the middle of a conversation. The new service doesn't kno
 
 ---
 
+## Updates
+
+Once a day, the studio checks whether a new version is available. If there is one, an **"Update verfügbar"** (update available) button appears at the top. Click it to see what changes, then **"Jetzt aktualisieren"** (update now) installs the update:
+
+- The update is blocked while a job is running, so no render is lost.
+- The studio closes briefly, updates in the background and then reopens on its own in a new tab.
+- Your videos, files, templates, conversations and your `CLAUDE.md` are kept.
+- If the update fails, the studio starts with the previous version and shows where the log is.
+
+Every new version is tested automatically on Windows, macOS and Linux first. For the check, the studio only downloads the file `versions.json` from GitHub; no data about you or your projects is sent. Claude Code keeps updating itself as usual.
+
+> **Good to know:** the studio update doesn't update system programs such as FFmpeg, Python and Node.js. Your system keeps those up to date, for example via winget, Homebrew or your Linux package manager. On Linux the installer needs your password for them, so run it by hand now and then.
+
+---
+
 ## Templates
 
 Below the input field you'll find ready-made templates such as **"Showreel"**, **"Produktfilm"** (product film) and **"Instagram-Reel"**. You can also create your own:
@@ -207,6 +222,8 @@ At the end, the installer renders a short test animation to confirm that everyth
 
 - **Different studio folder:** set the environment variable `CMG_STUDIO_DIR` before installing.
 - **Install without prompts:** `CMG_NONINTERACTIVE=1`
+- **Turn off the update check:** set the environment variable `CMG_NO_UPDATE_CHECK=1`.
+- **Tested versions:** `versions.json` sets the studio version and the tested versions of Codex, Playwright, Pillow and NumPy. A weekly GitHub workflow (**Versions-Check**) looks for new versions, tests them with the installer and then proposes them as a pull request. To let it create PRs, enable "Allow GitHub Actions to create and approve pull requests" under **Settings → Actions → General**; otherwise it opens an issue instead. If you change the studio, raise `cmg` in `versions.json`. Only then do installed studios offer the update.
 - **Use Claude Code directly in a terminal:** run `studio-im-terminal.ps1` (Windows) or `studio-im-terminal.sh` (Mac/Linux) in the studio folder.
 - **Studio app log:** `studio-app.log` in the app data folder (`%LOCALAPPDATA%\Claude-Motion-Studio` or `~/.local/share/claude-motion-studio`).
 - Every change is tested automatically on Windows, macOS and Ubuntu. See the **Actions** tab for the current status.

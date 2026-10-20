@@ -23,10 +23,13 @@ os.environ["CMG_CODEX_BIN"] = str(ROOT / "tests" / "fake_codex.py")
 import engines  # noqa: E402
 import media_files  # noqa: E402
 import studio_app  # noqa: E402
+import updates  # noqa: E402
 from claude_bridge import StudioBridge  # noqa: E402
 from engines import describe_codex_item, describe_tool, resolve_model, unwrap_shell  # noqa: E402
 
 WAIT_SECONDS = 20
+REPO_MANIFEST = json.loads((ROOT / "versions.json").read_text(encoding="utf-8"))
+NEWER_MANIFEST = dict(REPO_MANIFEST, cmg="99.0.0")
 
 
 class HelperTests(unittest.TestCase):
@@ -131,6 +134,12 @@ class ServerTestCase(unittest.TestCase):
         for folder in (self.studio / "exports", self.studio / "assets", self.data):
             folder.mkdir(parents=True)
         self.server = studio_app.create_server(self.studio, self.data)
+        # Nie ins Internet: GitHub-Abfrage und Update-Start werden ersetzt.
+        self.remote_manifest = REPO_MANIFEST
+        self.launched = []
+        self.server.updates = updates.UpdateChecker(
+            studio_app.APP_DIR, self.data, self.studio, fetch=lambda: (self.remote_manifest, "a" * 40),
+            launch=lambda args, log: self.launched.append(args))
         self.port = self.server.server_address[1]
         self.cookie = "{}={}".format(studio_app.COOKIE_NAME, self.server.session_token)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -338,6 +347,56 @@ class ChatTests(ServerTestCase):
         self.assertEqual(json.loads(data)["items"], [])
 
 
+class UpdateTests(ServerTestCase):
+    def test_update_status_requires_session(self):
+        status, _, _ = self.request("GET", "/api/update", session=False)
+        self.assertEqual(status, 403)
+        status, _, _ = self.request("POST", "/api/update/start", body={}, session=False,
+                                    headers={"Cookie": self.cookie})
+        self.assertEqual(status, 403)
+
+    def test_no_update_when_versions_match(self):
+        _, data, _ = self.request("GET", "/api/update")
+        info = json.loads(data)
+        self.assertEqual(info["current"], REPO_MANIFEST["cmg"])
+        self.assertFalse(info["available"])
+        status, _, _ = self.request("POST", "/api/update/start", body={})
+        self.assertEqual(status, 400)
+        self.assertEqual(self.launched, [])
+
+    def test_update_is_refused_while_a_job_runs(self):
+        self.remote_manifest = NEWER_MANIFEST
+        self.request("POST", "/api/chat", body={"message": "langsam bitte"})
+        status, _, _ = self.request("POST", "/api/update/start", body={})
+        self.assertEqual(status, 409)
+        self.assertEqual(self.launched, [])
+        self.assertFalse(self.server.updating)
+
+    def test_update_starts_runner_and_blocks_new_jobs(self):
+        self.remote_manifest = NEWER_MANIFEST
+        _, data, _ = self.request("GET", "/api/update?force=1")
+        self.assertTrue(json.loads(data)["available"])
+        status, _, _ = self.request("POST", "/api/update/start", body={})
+        self.assertEqual(status, 200)
+        self.assertEqual(Path(self.launched[0][1]).name, "update_runner.py")
+        self.assertTrue(self.server.updating)
+        status, _, _ = self.request("POST", "/api/chat", body={"message": "Hallo"})
+        self.assertEqual(status, 409)
+        status, _, _ = self.request("POST", "/api/update/start", body={})
+        self.assertEqual(status, 409)
+        self.assertEqual(len(self.launched), 1)
+
+    def test_update_result_is_kept_until_acknowledged(self):
+        result_file = self.data / "update-result.json"
+        result_file.write_text(json.dumps({"ok": False, "message": "kaputt", "log": "x.log"}), encoding="utf-8")
+        for _ in range(2):
+            _, data, _ = self.request("GET", "/api/update")
+            self.assertEqual(json.loads(data)["result"]["message"], "kaputt")
+        status, _, _ = self.request("POST", "/api/update/ack", body={})
+        self.assertEqual(status, 200)
+        self.assertFalse(result_file.exists())
+
+
 class FileTests(ServerTestCase):
     def test_media_supports_range_requests(self):
         (self.studio / "exports" / "clip.mp4").write_bytes(bytes(range(256)) * 4)
@@ -394,6 +453,43 @@ class BrowserTests(ServerTestCase):
                 self.assertTrue(page.locator("#info").is_hidden())
                 page.reload()
                 page.locator(".msg-assistant").first.wait_for(timeout=WAIT_SECONDS * 1000)
+            finally:
+                browser.close()
+
+    def test_update_badge_dialog_and_start(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        self.remote_manifest = NEWER_MANIFEST
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                page.get_by_role("button", name="Update verfügbar").click()
+                self.assertIn("Version 99.0.0", page.locator("#update-intro").inner_text())
+                self.assertIn("Motion Studio", page.locator("#update-changes").inner_text())
+                page.get_by_role("button", name="Jetzt aktualisieren").click()
+                page.get_by_text("Das Studio wird aktualisiert").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(len(self.launched), 1)
+            finally:
+                browser.close()
+
+    def test_info_shows_installed_version(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                page.wait_for_function("() => document.getElementById('info-version').textContent !== ''")
+                self.assertTrue(page.locator("#update-open").is_hidden())
+                page.get_by_role("button", name="Info").click()
+                self.assertEqual(page.locator("#info-version").inner_text(), "Version " + REPO_MANIFEST["cmg"])
             finally:
                 browser.close()
 
