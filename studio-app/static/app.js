@@ -201,7 +201,7 @@
   }
 
   // Vorschauen heißen *_vorschau.mp4; die volle Auflösung gibt es nur auf ausdrückliche Anfrage.
-  const isPreview = (file) => /vorschau/i.test(file.name);
+  const isPreview = (file) => /_vorschau\.[a-z0-9]+$/i.test(file.name);
 
   function requestFinal(file) {
     if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
@@ -284,8 +284,11 @@
   }
 
   async function refreshFiles() {
+    // Nur die jüngste Anfrage zählt – sonst könnte nach "Neues Gespräch" die alte Galerie zurückkommen.
+    const generation = state.filesGeneration = (state.filesGeneration || 0) + 1;
     try {
       const data = await api('/api/files');
+      if (generation !== state.filesGeneration) return;
       renderVideos(data.exports || []);
       renderAssets(data.assets || []);
     } catch (error) { /* Nächster Versuch beim nächsten Intervall */ }

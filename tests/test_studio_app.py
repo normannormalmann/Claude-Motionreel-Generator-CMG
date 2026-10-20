@@ -111,13 +111,17 @@ class HelperTests(unittest.TestCase):
 
     def test_conversation_folder_names_are_safe_and_unique(self):
         with tempfile.TemporaryDirectory() as temp:
-            name = conversation_folder_name("../../Geheim: Intro für „Café“!", temp, 0)
+            name = conversation_folder_name("../../Geheim: Intro für „Café“!", [temp], 0)
             self.assertTrue(name.endswith("_Geheim-Intro-für-Café"), name)
             self.assertNotIn("/", name)
             self.assertNotIn(".", name)
             (Path(temp) / name).mkdir()
-            self.assertEqual(conversation_folder_name("../../Geheim: Intro für „Café“!", temp, 0), name + "-2")
-            self.assertTrue(conversation_folder_name("", temp, 0).endswith("_Gespraech"))
+            self.assertEqual(conversation_folder_name("../../Geheim: Intro für „Café“!", [temp], 0), name + "-2")
+            self.assertTrue(conversation_folder_name("", [temp], 0).endswith("_Gespraech"))
+            with tempfile.TemporaryDirectory() as projects:
+                (Path(projects) / (name + "-2")).mkdir()
+                self.assertEqual(conversation_folder_name("../../Geheim: Intro für „Café“!", [temp, projects], 0),
+                                 name + "-3")
 
     def test_stored_folder_must_be_a_plain_name(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -383,6 +387,31 @@ class ChatTests(ServerTestCase):
         self.request("POST", "/api/chat", body={"message": "Ganz neues Video"})
         self.wait_until_idle()
         self.assertNotEqual(self.server.bridge.folder, folder)
+
+    def test_folder_failure_does_not_leave_studio_busy(self):
+        (self.studio / "exports").rmdir()
+        (self.studio / "exports").write_text("keine Ordner hier", encoding="utf-8")
+        status, _, _ = self.request("POST", "/api/chat", body={"message": "Hallo"})
+        self.assertEqual(status, 200)
+        items = self.wait_until_idle()
+        self.assertEqual(items[-1]["kind"], "error")
+        (self.studio / "exports").unlink()
+        (self.studio / "exports").mkdir()
+        self.request("POST", "/api/chat", body={"message": "Nochmal"})
+        self.assertEqual(self.wait_until_idle()[-1]["kind"], "done")
+
+    def test_conversation_from_older_version_keeps_its_videos_visible(self):
+        (self.studio / "exports" / "altes_video.mp4").write_bytes(b"x")
+        (self.studio / "exports" / "anderes-gespraech").mkdir()
+        (self.studio / "exports" / "anderes-gespraech" / "fremd.mp4").write_bytes(b"x")
+        self.server.bridge.items = [{"kind": "user", "text": "Altes Gespräch"}, {"kind": "done"}]
+        listing = json.loads(self.request("GET", "/api/files")[1])
+        self.assertEqual([f["name"] for f in listing["exports"]], ["altes_video.mp4"])
+        self.request("POST", "/api/chat", body={"message": "Weiter"})
+        items = self.wait_until_idle()
+        self.assertEqual(items[2]["kind"], "note")
+        self.assertIn(self.server.bridge.folder, items[2]["text"])
+        self.assertTrue((self.studio / "projekte" / self.server.bridge.folder).is_dir())
 
     def test_reset_clears_conversation(self):
         self.request("POST", "/api/chat", body={"message": "Hallo"})

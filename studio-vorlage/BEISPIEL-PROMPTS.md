@@ -14,7 +14,7 @@ Ersetze Angaben in [eckigen Klammern] durch deine eigenen.
 Erstelle in diesem Projekt ein 15 Sekunden langes
 Motion-Design-Showreel für ein fiktives Designstudio.
 
-Format: 1920 × 1080 Pixel, 30 fps.
+Format der finalen Version: 1920 × 1080 Pixel, 30 fps.
 Stil: redaktionell, präzise, große Typografie,
 cremefarbener Hintergrund, schwarze Schrift und orange Akzente.
 

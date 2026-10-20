@@ -325,8 +325,15 @@ class StudioHandler(BaseHTTPRequestHandler):
 
     def _list_files(self):
         """Rechts erscheinen nur die Ergebnisse des aktuellen Gesprächs."""
-        folder = self.server.bridge.folder
-        exports = media.list_media(self.server.studio_dir, "exports", folder) if folder else []
+        bridge = self.server.bridge
+        folder = bridge.folder
+        if folder:
+            exports = media.list_media(self.server.studio_dir, "exports", folder)
+        elif bridge.items:
+            # Gespräch aus einer älteren Version ohne eigenen Ordner: dessen Videos liegen direkt in exports.
+            exports = media.list_media(self.server.studio_dir, "exports", top_level_only=True)
+        else:
+            exports = []
         return self._send_json({"exports": exports, "assets": media.list_media(self.server.studio_dir, "assets"),
                                 "conversation": folder})
 

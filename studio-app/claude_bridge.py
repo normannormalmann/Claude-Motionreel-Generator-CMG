@@ -22,7 +22,7 @@ FOLDER_SEPARATORS = re.compile(r"[^\w]+")
 MAX_FOLDER_TITLE = 40
 
 
-def conversation_folder_name(message, existing_dir, now=None):
+def conversation_folder_name(message, existing_dirs, now=None):
     """Ordnername für ein neues Gespräch, z. B. "2026-10-20_1412_Showreel-für-Studio-Nord"."""
     first_line = (message.strip().splitlines() or [""])[0]
     title = FOLDER_SEPARATORS.sub("-", first_line).strip("-_")
@@ -31,7 +31,7 @@ def conversation_folder_name(message, existing_dir, now=None):
     stamp = time.strftime("%Y-%m-%d_%H%M", time.localtime(now))
     base = "{}_{}".format(stamp, title or "Gespraech")
     name, number = base, 2
-    while (Path(existing_dir) / name).exists():
+    while any((Path(folder) / name).exists() for folder in existing_dirs):
         name, number = "{}-{}".format(base, number), number + 1
     return name
 
@@ -108,6 +108,10 @@ class StudioBridge:
         return self.studio_dir / "exports"
 
     @property
+    def projects_dir(self):
+        return self.studio_dir / "projekte"
+
+    @property
     def folder_path(self):
         """Ordner der Ergebnisse dieses Gesprächs (oder None vor dem ersten Auftrag)."""
         return self.exports_dir / self.folder if self.folder else None
@@ -161,14 +165,19 @@ class StudioBridge:
                                    "Verlauf dieses Gesprächs nicht.".format(engine.label)})
             self.engine_key = engine.key
             if not self.folder:
-                self.folder = conversation_folder_name(message, self.exports_dir)
+                self.folder = conversation_folder_name(message, (self.exports_dir, self.projects_dir))
+                if self.items:
+                    # Gespräch aus einer älteren Version: Bisherige Videos liegen direkt in exports.
+                    self.items.append({"kind": "note", "text": "Neue Videos dieses Gesprächs landen ab jetzt im "
+                                       "Ordner exports/{}.".format(self.folder)})
             self.items.append({"kind": "user", "text": message})
             self._lock.notify_all()
-        (self.exports_dir / self.folder).mkdir(parents=True, exist_ok=True)
 
-        args = command + engine.chat_args(model, self.sessions.get(engine.key), self.folder)
         session_flags = {} if ps.IS_WINDOWS else {"start_new_session": True}
         try:
+            for base in (self.exports_dir, self.projects_dir):
+                (base / self.folder).mkdir(parents=True, exist_ok=True)
+            args = command + engine.chat_args(model, self.sessions.get(engine.key), self.folder)
             self._process = subprocess.Popen(
                 args, cwd=str(self.studio_dir), env=ps.tool_environment(),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,

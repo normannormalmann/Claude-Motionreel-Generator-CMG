@@ -24,7 +24,7 @@
 - Rendere bei neuen Videos und Änderungen immer nur eine Vorschau in niedriger Auflösung (halbe Breite und Höhe, z. B. 960 × 540) und speichere sie als `<name>_vorschau.mp4`.
 - Die finale Version in voller Auflösung nur, wenn die Person ausdrücklich darum bittet. Biete sie am Ende an.
 - MP4 mit H.264 und Pixelformat yuv420p exportieren.
-- Jedes Gespräch hat einen eigenen Ordner (das Studio nennt ihn im Auftrag): Ergebnisse in `exports/<Gespräch>/`, Quelldateien in `projekte/<Gespräch>/`.
+- Im Motion Studio hat jedes Gespräch einen eigenen Ordner, den das Studio mit jedem Auftrag nennt: Ergebnisse in `exports/<Gespräch>/`, Quelldateien in `projekte/<Gespräch>/`. Ohne diese Angabe gehören Ergebnisse in `exports`.
 - Temporäre Einzelbilder getrennt von Quelldateien und Ergebnissen speichern.
 - Eigene Medien (Musik, Logos, Bilder) liegen im Ordner assets.
 

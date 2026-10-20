@@ -29,7 +29,7 @@ CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 SHOWREEL_TEXT = (
     "Erstelle ein 15 Sekunden langes Motion-Design-Showreel für ein fiktives Designstudio.\n"
-    "Format: 1920 × 1080 Pixel, 30 fps.\n"
+    "Format der finalen Version: 1920 × 1080 Pixel, 30 fps.\n"
     "Stil: redaktionell, präzise, große Typografie, cremefarbener Hintergrund, schwarze Schrift und orange Akzente.\n"
     "Plane fünf Szenen mit unterschiedlichen Bewegungsideen. Beginne zunächst ohne Audio.\n\n"
     "Lies CLAUDE.md und prüfe die vorhandenen Werkzeuge. Erstelle dann:\n"
