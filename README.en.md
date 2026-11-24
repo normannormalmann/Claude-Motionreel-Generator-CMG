@@ -10,6 +10,8 @@ You describe the video you want in plain words. Claude turns that into an animat
 
 This package installs everything you need for that. You don't need any technical knowledge.
 
+<sub>Like the project? A ⭐ on GitHub (top right) or a [coffee](https://buymeacoffee.com/normanschou) helps a lot – more under [Support the project](#support-the-project).</sub>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/studio-dunkel.png">
   <img src="docs/images/studio-hell.png" alt="Motion Studio: chat with Claude on the left, the finished video and preview frames on the right" width="100%">
@@ -233,6 +235,17 @@ At the end, the installer renders a short test animation to confirm that everyth
 - **Use Claude Code directly in a terminal:** run `studio-im-terminal.ps1` (Windows) or `studio-im-terminal.sh` (Mac/Linux) in the studio folder.
 - **Studio app log:** `studio-app.log` in the app data folder (`%LOCALAPPDATA%\Claude-Motion-Studio` or `~/.local/share/claude-motion-studio`).
 - Every change is tested automatically on Windows, macOS and Ubuntu. See the **Actions** tab for the current status.
+
+---
+
+## Support the project
+
+I build the studio in my spare time and share it for free. If it saves you work, I'd appreciate your support:
+
+- **Star on GitHub:** Click **⭐ Star** at the top right of this page. It's free, takes a second and helps others find the project.
+- **Buy me a coffee:** You can buy me a coffee via [Buy Me a Coffee](https://buymeacoffee.com/normanschou). Every coffee keeps the project going.
+
+<a href="https://buymeacoffee.com/normanschou"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="44"></a>
 
 ---
 
