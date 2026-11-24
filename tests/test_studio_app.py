@@ -650,6 +650,30 @@ class BrowserTests(ServerTestCase):
             finally:
                 browser.close()
 
+    def test_support_hint_appears_only_after_first_video(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.goto(self.server.launch_url)
+                hint = page.locator(".support-hint")
+                for run in range(2):
+                    page.locator("#prompt").fill("Video {}".format(run))
+                    page.get_by_role("button", name="Senden").click()
+                    page.locator(".done-note").nth(run).wait_for(timeout=WAIT_SECONDS * 1000)
+                    page.locator(".media-card.is-new").first.wait_for(timeout=WAIT_SECONDS * 1000)
+                    if run == 0:
+                        hint.wait_for(timeout=WAIT_SECONDS * 1000)
+                        self.assertEqual(hint.locator("a[href*='buymeacoffee.com/normanschou']").count(), 1)
+                        hint.get_by_role("button", name="Schließen").click()
+                    self.assertEqual(hint.count(), 0)
+            finally:
+                browser.close()
+
     def test_update_badge_dialog_and_start(self):
         try:
             from playwright.sync_api import sync_playwright
