@@ -73,12 +73,12 @@ def render_demo_media(studio, ffmpeg):
     previews.mkdir(parents=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page = browser.new_page(locale="de-DE", viewport={"width": 1280, "height": 720})
         page.set_content(html)
         for index in range(FPS * DURATION):
             page.evaluate("t => window.seek(t)", 0.55 + index / FPS)
             page.screenshot(path=str(frames / "f_{:04d}.png".format(index)))
-        small = browser.new_page(viewport={"width": 640, "height": 360})
+        small = browser.new_page(locale="de-DE", viewport={"width": 640, "height": 360})
         small.set_content(html)
         for number, moment in enumerate((0.6, 0.95, 1.6, 1.95, 2.6, 2.95), start=1):
             small.evaluate("t => window.seek(t)", moment)
@@ -193,7 +193,7 @@ def take_screenshots(server):
             ("vorlage-ausfuellen.png", {"width": 1440, "height": 900}, "light", "fill"),
         ]
         for name, viewport, scheme, mode in shots:
-            context = browser.new_context(viewport=viewport, color_scheme=scheme, device_scale_factor=2)
+            context = browser.new_context(locale="de-DE", viewport=viewport, color_scheme=scheme, device_scale_factor=2)
             page = context.new_page()
             page.goto(server.launch_url)
             page.locator(".msg-assistant").first.wait_for()

@@ -141,6 +141,12 @@ Du kannst auch mitten im Gespräch wechseln. Der neue Dienst kennt den bisherige
 
 ---
 
+## Sprache
+
+Das Studio gibt es auf **Deutsch** und **Englisch**. Es richtet sich nach der Sprache deines Browsers. Umstellen kannst du sie im Studio unter **„Info“ → „Sprache“**. Die KI antwortet dann ebenfalls in dieser Sprache.
+
+---
+
 ## Updates
 
 Das Studio prüft einmal am Tag, ob es eine neue Version gibt. Ist eine da, erscheint oben der Knopf **„Update verfügbar“**. Ein Klick zeigt, was sich ändert, und **„Jetzt aktualisieren“** spielt das Update ein:

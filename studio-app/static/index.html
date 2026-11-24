@@ -129,8 +129,15 @@
           <a class="support-link" href="https://buymeacoffee.com/normanschou" target="_blank" rel="noopener noreferrer">☕ Kaffee spendieren</a>
         </div>
       </div>
+      <label class="lang-select">
+        <span>Sprache</span>
+        <select id="lang">
+          <option value="de">Deutsch</option>
+          <option value="en">English</option>
+        </select>
+      </label>
       <p class="fine" id="info-version"></p>
-      <p class="fine">Nutzung auf eigene Gefahr: Claude arbeitet selbstständig auf deinem Computer, und KI-Ergebnisse können fehlerhaft sein. Details im <a href="https://github.com/normannormalmann/Claude-Motionreel-Generator-CMG#haftungsausschluss" target="_blank" rel="noopener noreferrer">Haftungsausschluss</a>.</p>
+      <p class="fine" data-i18n-html="disclaimer">Nutzung auf eigene Gefahr: Claude arbeitet selbstständig auf deinem Computer, und KI-Ergebnisse können fehlerhaft sein. Details im <a href="https://github.com/normannormalmann/Claude-Motionreel-Generator-CMG#haftungsausschluss" target="_blank" rel="noopener noreferrer">Haftungsausschluss</a>.</p>
       <p class="fine">Claude und Claude Code sind Produkte von Anthropic, ChatGPT und Codex sind Produkte von OpenAI. CMG ist ein unabhängiges Projekt und steht mit keinem der beiden Unternehmen in Verbindung.</p>
       <div class="dialog-actions">
         <button class="primary" id="info-close" type="button">Schließen</button>
@@ -179,7 +186,7 @@
   <div class="overlay" id="preset-manager" hidden>
     <div class="dialog dialog-wide" role="dialog" aria-modal="true" aria-labelledby="manager-title">
       <h2 id="manager-title">Vorlagen</h2>
-      <p>Eigene Vorlagen werden als <code>presets.json</code> im Studio-Ordner gespeichert.</p>
+      <p data-i18n-html="presets-file">Eigene Vorlagen werden als <code>presets.json</code> im Studio-Ordner gespeichert.</p>
       <ul class="preset-list" id="preset-list"></ul>
       <div class="dialog-actions">
         <button class="primary" id="preset-new" type="button">Neue Vorlage</button>
@@ -196,7 +203,7 @@
       <form class="form-grid" id="editor-form">
         <label>Name<input id="ed-name" maxlength="80" autocomplete="off"></label>
         <label>Auftrag<textarea id="ed-text" rows="7" maxlength="8000"></textarea></label>
-        <p class="field-hint">Tipp: Schreibe Platzhalter in eckige Klammern, z. B. <code>[Produkt]</code>. Beim Verwenden fragt das Studio sie in einem Formular ab.</p>
+        <p class="field-hint" data-i18n-html="placeholder-tip">Tipp: Schreibe Platzhalter in eckige Klammern, z. B. <code>[Produkt]</code>. Beim Verwenden fragt das Studio sie in einem Formular ab.</p>
         <p class="field-hint" id="ed-placeholders"></p>
         <details id="ed-brand-box">
           <summary>Marken-Vorgaben (optional)</summary>
@@ -233,6 +240,7 @@
   </div>
 
   <div class="toast" id="toast" role="status" hidden></div>
+  <script src="/static/i18n.js"></script>
   <script src="/static/presets.js"></script>
   <script src="/static/app.js"></script>
 </body>

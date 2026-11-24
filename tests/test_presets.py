@@ -192,7 +192,7 @@ class PresetBrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.on("dialog", lambda dialog: dialog.accept())
                 page.goto(self.server.launch_url)
                 page.locator("#assets li").first.wait_for(timeout=timeout)
@@ -243,7 +243,7 @@ class PresetBrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 chip = page.get_by_role("button", name=hostile)
                 chip.wait_for(timeout=WAIT_SECONDS * 1000)

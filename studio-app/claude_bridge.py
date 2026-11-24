@@ -159,7 +159,7 @@ class StudioBridge:
 
     # ------------------------------------------------------------ Aufträge
 
-    def start_chat(self, message, model_choice):
+    def start_chat(self, message, model_choice, lang="de"):
         engine, model = resolve_model(model_choice)
         command = engine.command()
         if not command:
@@ -186,7 +186,7 @@ class StudioBridge:
         try:
             for base in (self.exports_dir, self.projects_dir):
                 (base / self.folder).mkdir(parents=True, exist_ok=True)
-            args = command + engine.chat_args(model, self.sessions.get(engine.key), self.folder)
+            args = command + engine.chat_args(model, self.sessions.get(engine.key), self.folder, lang)
             self._process = subprocess.Popen(
                 args, cwd=str(self.studio_dir), env=ps.tool_environment(),
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
