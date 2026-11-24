@@ -4,6 +4,9 @@
   const IDLE_POLL_MS = 15000;
   const BUSY_FILES_MS = 6000;
   const LOGIN_POLL_MS = 1500;
+  // Der Server hält Abfragen höchstens 20 s offen (LONG_POLL_SECONDS); danach gilt eine Abfrage als hängend.
+  const STATE_TIMEOUT_MS = 35000;
+  const FILES_TIMEOUT_MS = 15000;
   const MAX_THUMBS = 9;
   const UPDATE_CHECK_MS = 6 * 60 * 60 * 1000;
   const UPDATE_GIVE_UP_MS = 30 * 60 * 1000;
@@ -38,16 +41,32 @@
 
   // ------------------------------------------------------------ Hilfen
 
+  class RequestTimeoutError extends Error {}
+
   const sleep = (ms) => new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);
     state.wake = () => { clearTimeout(timer); resolve(); };
   });
 
   // Die Anmeldung beim Studio läuft über ein HttpOnly-Cookie; der Kopf-Eintrag schützt vor fremden Seiten.
-  async function api(path, options = {}) {
+  // timeoutMs bricht hängende Abfragen ab (Safari wartet sonst unbegrenzt auf eine freie Verbindung).
+  async function api(path, options = {}, timeoutMs = 0) {
     const headers = Object.assign({ 'X-Studio-Request': '1' }, options.headers || {});
-    const response = await fetch(path, Object.assign({}, options, { headers, credentials: 'same-origin' }));
-    const data = await response.json().catch(() => ({}));
+    const controller = timeoutMs ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    let response;
+    let data;
+    try {
+      response = await fetch(path, Object.assign({}, options, {
+        headers, credentials: 'same-origin', signal: controller ? controller.signal : options.signal,
+      }));
+      data = await response.json().catch(() => ({}));
+    } catch (error) {
+      if (error && error.name === 'AbortError') throw new RequestTimeoutError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
     if (response.status === 403) throw new Error('Bitte öffne das Studio erneut über das Symbol „Motion Studio“.');
     if (!response.ok) throw new Error(data.error || 'Unbekannter Fehler');
     return data;
@@ -181,7 +200,7 @@
     for (;;) {
       try {
         const generation = state.chatGeneration;
-        const data = await api(`/api/state?from=${state.next}${state.busy ? '&wait=1' : ''}`);
+        const data = await api(`/api/state?from=${state.next}${state.busy ? '&wait=1' : ''}`, {}, STATE_TIMEOUT_MS);
         if (generation !== state.chatGeneration) continue;
         // Ein anderer Tab hat ein neues Gespräch begonnen oder ein altes geöffnet.
         if (state.epoch !== null && data.epoch !== state.epoch) {
@@ -195,6 +214,8 @@
         setBusy(data.busy);
         if (!data.busy) await sleep(IDLE_POLL_MS);
       } catch (error) {
+        // Eine hängende Abfrage wird still neu gestartet; sie ist kein Grund für eine Fehlermeldung.
+        if (error instanceof RequestTimeoutError) continue;
         // Während eines Updates ist das Studio absichtlich kurz weg.
         if (!state.updating) {
           toast(error instanceof TypeError ? 'Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.' : error.message);
@@ -310,7 +331,7 @@
     // Nur die jüngste Anfrage zählt – sonst könnte nach "Neues Gespräch" die alte Galerie zurückkommen.
     const generation = state.filesGeneration = (state.filesGeneration || 0) + 1;
     try {
-      const data = await api('/api/files');
+      const data = await api('/api/files', {}, FILES_TIMEOUT_MS);
       if (generation !== state.filesGeneration) return;
       renderVideos(data.exports || []);
       renderAssets(data.assets || []);

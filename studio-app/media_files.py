@@ -16,6 +16,9 @@ MEDIA_ROOTS = ("exports", "assets")
 MAX_MEDIA_FILES = 80
 MAX_NAME_LENGTH = 120
 CHUNK_SIZE = 64 * 1024
+# Offene Bereiche ("bytes=0-") liefern wir nur stückweise. Safari liest bei Videos nur die Kopfdaten und lässt
+# die Verbindung danach offen; mit ganzen Dateien wären so schnell alle Verbindungen zum Studio belegt.
+MAX_OPEN_RANGE_BYTES = 2 * 1024 * 1024
 UNSAFE_CHARACTERS = re.compile(r"[^\w.\- ]")
 WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"} | {"{}{}".format(p, n) for p in ("COM", "LPT") for n in range(1, 10)}
 RANGE_PATTERN = re.compile(r"bytes=(\d*)-(\d*)$")
@@ -84,7 +87,8 @@ def parse_range(header, size):
         return 0, size - 1, False
     if match.group(1):
         start = int(match.group(1))
-        end = min(int(match.group(2)), size - 1) if match.group(2) else size - 1
+        end = int(match.group(2)) if match.group(2) else start + MAX_OPEN_RANGE_BYTES - 1
+        end = min(end, size - 1)
     else:
         start, end = max(0, size - int(match.group(2))), size - 1
     if start > end:
