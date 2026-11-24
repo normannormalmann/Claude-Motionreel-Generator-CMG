@@ -233,6 +233,9 @@ class PresetStore:
                 imported.append(dict(validate(item), id=uuid.uuid4().hex))
             except PresetError:
                 skipped += 1
+        if not imported:
+            # Auch extrem verschachtelte Dateien landen hier, falls der JSON-Parser sie (je nach System) schafft.
+            raise PresetError("Die Datei enthält keine gültigen Vorlagen.")
         with self._lock:
             presets, incomplete = self._load_user_presets()
             room = max(0, MAX_PRESETS - len(presets))

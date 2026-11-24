@@ -117,6 +117,11 @@ class StoreTests(unittest.TestCase):
             '{"presets": [{"name": "A", "text": "a", "brand": {"duration": 1e999}}, {"name": "B", "text": "b"}]}'))
         self.assertEqual((imported, skipped), (1, 1))
 
+    def test_import_without_any_valid_preset_is_rejected(self):
+        for data in ([], [[[[]]]], {"presets": [{"name": ""}]}):
+            with self.assertRaises(PresetError):
+                self.store.import_presets(data)
+
     def test_preset_limit_applies_to_save_and_import(self):
         self.store.import_presets([{"name": "V{}".format(i), "text": "t"} for i in range(presets.MAX_PRESETS - 1)])
         imported, skipped = self.store.import_presets([{"name": "X", "text": "t"}, {"name": "Y", "text": "t"}])
