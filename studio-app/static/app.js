@@ -12,6 +12,9 @@
   const UPDATE_GIVE_UP_MS = 30 * 60 * 1000;
   const SEARCH_DELAY_MS = 250;
   const DEFAULT_MODEL = 'opus';
+  const SUPPORT_HINT_KEY = 'studio-support-hint-shown';
+  const REPO_URL = 'https://github.com/normannormalmann/Claude-Motionreel-Generator-CMG';
+  const COFFEE_URL = 'https://buymeacoffee.com/normanschou';
   const ENGINES = {
     claude: {
       label: 'Claude',
@@ -258,7 +261,8 @@
     const videos = files.filter((f) => f.type === 'video');
     const images = files.filter((f) => f.type === 'image').slice(0, MAX_THUMBS);
     const signature = files.map((f) => f.name + f.modified).join('|');
-    if (signature === state.videoSignature) return;
+    // Auch eine leere Galerie muss einmal als "bekannt" gelten, sonst zählt das erste Video nie als neu.
+    if (signature === state.videoSignature && state.knownVideos !== null) return;
     state.videoSignature = signature;
 
     const previous = state.knownVideos;
@@ -292,7 +296,10 @@
       }
       card.append(actions);
       container.append(card);
-      if (isNew) toast(`Neues Video: ${file.name}`);
+      if (isNew) {
+        toast(`Neues Video: ${file.name}`);
+        showSupportHintOnce();
+      }
     });
     if (images.length) {
       const head = document.createElement('p');
@@ -311,6 +318,41 @@
       });
       container.append(head, grid);
     }
+  }
+
+  function supportLink(href, text) {
+    const link = document.createElement('a');
+    link.className = 'support-link';
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = text;
+    return link;
+  }
+
+  // Einmaliger Dank nach dem ersten Video, das live fertig wird. Ohne Browser-Speicher lieber gar nicht,
+  // sonst käme der Hinweis bei jedem Video wieder.
+  function showSupportHintOnce() {
+    try {
+      if (localStorage.getItem(SUPPORT_HINT_KEY)) return;
+      localStorage.setItem(SUPPORT_HINT_KEY, '1');
+    } catch (error) { return; }
+    const note = document.createElement('div');
+    note.className = 'support support-hint';
+    const text = document.createElement('p');
+    text.textContent = 'Dein Video ist fertig! Gefällt dir das Studio? Ein Stern auf GitHub hilft anderen, es zu finden – und über einen Kaffee freue ich mich sehr.';
+    const links = document.createElement('div');
+    links.className = 'support-links';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'ghost small';
+    close.textContent = 'Schließen';
+    close.addEventListener('click', () => note.remove());
+    links.append(supportLink(REPO_URL, '⭐ Stern auf GitHub geben'), supportLink(COFFEE_URL, '☕ Kaffee spendieren'), close);
+    note.append(text, links);
+    const messages = $('messages');
+    messages.append(note);
+    messages.scrollTop = messages.scrollHeight;
   }
 
   function renderAssets(files) {

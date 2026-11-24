@@ -231,6 +231,8 @@ Ich entwickle das Studio in meiner Freizeit und stelle es kostenlos zur Verfügu
 - **Stern auf GitHub:** Klicke oben rechts auf dieser Seite auf **⭐ Star**. Das kostet nichts, dauert eine Sekunde und hilft anderen, das Projekt zu finden.
 - **Kaffee spendieren:** Über [Buy Me a Coffee](https://buymeacoffee.com/normanschou) kannst du mir einen Kaffee ausgeben. Jeder Kaffee hält das Projekt am Laufen.
 
+Beide Links findest du auch im Studio unter **„Info“**. Nach deinem ersten fertigen Video erinnert dich das Studio einmalig daran – danach nie wieder.
+
 <a href="https://buymeacoffee.com/normanschou"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="44"></a>
 
 ---

@@ -242,7 +242,9 @@ button.small { padding: 4px 12px; font-size: 13px; }
 .contact a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
 .contact a:hover { text-decoration: underline; }
 .support { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--radius); background: var(--surface-2); }
-.support-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.support-links { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.support-hint { align-self: stretch; }
+.support-hint p { margin: 0; font-size: 14px; }
 .support-link { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-size: 13px; }
 .support-link:hover { border-color: var(--accent); color: var(--accent); }
 .dialog .fine { font-size: 12px; }

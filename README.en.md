@@ -245,6 +245,8 @@ I build the studio in my spare time and share it for free. If it saves you work,
 - **Star on GitHub:** Click **⭐ Star** at the top right of this page. It's free, takes a second and helps others find the project.
 - **Buy me a coffee:** You can buy me a coffee via [Buy Me a Coffee](https://buymeacoffee.com/normanschou). Every coffee keeps the project going.
 
+You'll also find both links in the studio under **"Info"**. After your first finished video, the studio reminds you once – and never again.
+
 <a href="https://buymeacoffee.com/normanschou"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="44"></a>
 
 ---
