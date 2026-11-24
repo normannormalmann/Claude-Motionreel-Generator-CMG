@@ -146,6 +146,14 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(media_files.parse_range(None, 100), (0, 99, False))
         self.assertIsNone(media_files.parse_range("bytes=200-", 100))
 
+    def test_open_range_is_served_in_pieces(self):
+        # Safari fragt Videos mit "bytes=0-" an; die ganze Datei würde eine Verbindung lange blockieren.
+        limit = media_files.MAX_OPEN_RANGE_BYTES
+        size = limit * 3
+        self.assertEqual(media_files.parse_range("bytes=0-", size), (0, limit - 1, True))
+        self.assertEqual(media_files.parse_range("bytes={}-".format(size - 5), size), (size - 5, size - 1, True))
+        self.assertEqual(media_files.parse_range("bytes=0-", 100), (0, 99, True))
+
     def test_interrupted_upload_keeps_existing_file(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "song.mp3"
