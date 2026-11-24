@@ -18,21 +18,23 @@
   const ENGINES = {
     claude: {
       label: 'Claude',
-      loginTitle: 'Bei Claude anmelden',
-      loginIntro: 'Damit Claude für dich arbeiten kann, melde dich einmalig mit deinem Claude-Konto an. Dein Browser öffnet sich dafür.',
-      missing: 'Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.',
+      loginTitle: window.CMGI18n.t('Bei Claude anmelden'),
+      loginIntro: window.CMGI18n.t('Damit Claude für dich arbeiten kann, melde dich einmalig mit deinem Claude-Konto an. Dein Browser öffnet sich dafür.'),
+      missing: window.CMGI18n.t('Claude Code wurde nicht gefunden. Bitte den Installer erneut starten.'),
       usesCode: true,
     },
     codex: {
       label: 'ChatGPT',
-      loginTitle: 'Bei ChatGPT anmelden',
-      loginIntro: 'Damit ChatGPT (über Codex) für dich arbeiten kann, melde dich einmalig mit deinem ChatGPT-Konto an, z. B. Plus oder Pro. Dein Browser öffnet sich dafür.',
-      missing: 'Codex wurde nicht gefunden. Bitte den Installer erneut starten, er richtet Codex mit ein.',
+      loginTitle: window.CMGI18n.t('Bei ChatGPT anmelden'),
+      loginIntro: window.CMGI18n.t('Damit ChatGPT (über Codex) für dich arbeiten kann, melde dich einmalig mit deinem ChatGPT-Konto an, z. B. Plus oder Pro. Dein Browser öffnet sich dafür.'),
+      missing: window.CMGI18n.t('Codex wurde nicht gefunden. Bitte den Installer erneut starten, er richtet Codex mit ein.'),
       usesCode: false,
     },
   };
 
   const $ = (id) => document.getElementById(id);
+  const I18N = window.CMGI18n;
+  const { t } = I18N;
   const state = {
     next: 0, busy: false, startedAt: 0, wake: null, videoSignature: '', knownVideos: null,
     loginTimer: null, loginEngine: 'claude', runEngine: null, assets: [], update: null, updating: false,
@@ -70,8 +72,8 @@
     } finally {
       clearTimeout(timer);
     }
-    if (response.status === 403) throw new Error('Bitte öffne das Studio erneut über das Symbol „Motion Studio“.');
-    if (!response.ok) throw new Error(data.error || 'Unbekannter Fehler');
+    if (response.status === 403) throw new Error(t('Bitte öffne das Studio erneut über das Symbol „Motion Studio“.'));
+    if (!response.ok) throw new Error(I18N.server(data.error) || t('Unbekannter Fehler'));
     return data;
   }
 
@@ -116,7 +118,7 @@
   }
 
   const formatSize = (bytes) => (bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-  const formatTime = (seconds) => new Date(seconds * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  const formatTime = (seconds) => new Date(seconds * 1000).toLocaleString(I18N.locale, { dateStyle: 'short', timeStyle: 'short' });
   const mediaUrl = (file) => `${file.url}?v=${file.modified}`;
 
   // ------------------------------------------------------------ Gespräch
@@ -136,7 +138,7 @@
     } else if (item.kind === 'note') {
       element = document.createElement('div');
       element.className = 'step step-note';
-      element.textContent = item.text;
+      element.textContent = I18N.server(item.text);
     } else if (item.kind === 'tool') {
       element = document.createElement('div');
       element.className = 'step';
@@ -144,22 +146,22 @@
         const details = document.createElement('details');
         const summary = document.createElement('summary');
         const pre = document.createElement('pre');
-        summary.textContent = item.text;
+        summary.textContent = I18N.server(item.text);
         pre.textContent = item.detail;
         details.append(summary, pre);
         element.append(details);
       } else {
-        element.textContent = item.text;
+        element.textContent = I18N.server(item.text);
       }
     } else if (item.kind === 'done') {
       element = document.createElement('div');
       element.className = 'done-note';
-      element.textContent = '✓ Fertig';
+      element.textContent = t('✓ Fertig');
       refreshFiles();
     } else if (item.kind === 'error') {
       element = document.createElement('div');
       element.className = 'msg msg-error';
-      element.textContent = item.text;
+      element.textContent = I18N.server(item.text);
       if (item.needs_login) showLogin(item.engine || currentEngine());
     }
     if (!element) return;
@@ -184,7 +186,7 @@
     const seconds = Math.floor((Date.now() - state.startedAt) / 1000);
     const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     const label = ENGINES[state.runEngine || currentEngine()].label;
-    $('working-text').textContent = `${label} arbeitet … ${clock}`;
+    $('working-text').textContent = t('{0} arbeitet … {1}', label, clock);
   }
 
   // Zeigt das (neue oder wieder geöffnete) Gespräch von vorn; laufende Abfragen des alten zählen nicht mehr.
@@ -221,7 +223,7 @@
         if (error instanceof RequestTimeoutError) continue;
         // Während eines Updates ist das Studio absichtlich kurz weg.
         if (!state.updating) {
-          toast(error instanceof TypeError ? 'Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.' : error.message);
+          toast(error instanceof TypeError ? t('Verbindung zum Studio unterbrochen. Bitte „Motion Studio“ neu starten.') : error.message);
         }
         await sleep(5000);
       }
@@ -231,7 +233,7 @@
   async function sendMessage(message) {
     if (!message || state.busy) return false;
     try {
-      await postJson('/api/chat', { message, model: $('model').value });
+      await postJson('/api/chat', { message, model: $('model').value, lang: I18N.lang });
       state.runEngine = currentEngine();
       setBusy(true);
       if (state.wake) state.wake();
@@ -251,8 +253,8 @@
   const isPreview = (file) => /_vorschau\.[a-z0-9]+$/i.test(file.name);
 
   function requestFinal(file) {
-    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
-    sendMessage(`Bitte erstelle jetzt die finale Version von ${file.name} in voller Auflösung.`);
+    if (state.busy) { toast(t('Es läuft gerade noch ein Auftrag.')); return; }
+    sendMessage(t('Bitte erstelle jetzt die finale Version von {0} in voller Auflösung.', file.name));
   }
 
   // ------------------------------------------------------------ Dateien
@@ -270,7 +272,10 @@
     const container = $('videos');
     container.replaceChildren();
     if (!videos.length && !images.length) {
-      container.innerHTML = '<p class="empty">Noch keine Videos in diesem Gespräch. Starte links mit einem Auftrag.</p>';
+      const empty = document.createElement('p');
+      empty.className = 'empty';
+      empty.textContent = t('Noch keine Videos in diesem Gespräch. Starte links mit einem Auftrag.');
+      container.append(empty);
       return;
     }
     videos.forEach((file) => {
@@ -283,28 +288,28 @@
       actions.className = 'media-actions';
       const badge = document.createElement('span');
       badge.className = 'media-badge' + (isPreview(file) ? '' : ' is-final');
-      badge.textContent = isPreview(file) ? 'Vorschau' : 'Final';
+      badge.textContent = isPreview(file) ? t('Vorschau') : t('Final');
       actions.append(badge);
       if (isPreview(file)) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'ghost small';
-        button.textContent = 'Finale Version erstellen';
-        button.title = 'Rendert dieses Video in voller Auflösung';
+        button.textContent = t('Finale Version erstellen');
+        button.title = t('Rendert dieses Video in voller Auflösung');
         button.addEventListener('click', () => requestFinal(file));
         actions.append(button);
       }
       card.append(actions);
       container.append(card);
       if (isNew) {
-        toast(`Neues Video: ${file.name}`);
+        toast(t('Neues Video: {0}', file.name));
         showSupportHintOnce();
       }
     });
     if (images.length) {
       const head = document.createElement('p');
       head.className = 'subhead';
-      head.textContent = 'Vorschaubilder';
+      head.textContent = t('Vorschaubilder');
       const grid = document.createElement('div');
       grid.className = 'thumbs';
       images.forEach((file) => {
@@ -340,15 +345,15 @@
     const note = document.createElement('div');
     note.className = 'support support-hint';
     const text = document.createElement('p');
-    text.textContent = 'Dein Video ist fertig! Gefällt dir das Studio? Ein Stern auf GitHub hilft anderen, es zu finden – und über einen Kaffee freue ich mich sehr.';
+    text.textContent = t('Dein Video ist fertig! Gefällt dir das Studio? Ein Stern auf GitHub hilft anderen, es zu finden – und über einen Kaffee freue ich mich sehr.');
     const links = document.createElement('div');
     links.className = 'support-links';
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'ghost small';
-    close.textContent = 'Schließen';
+    close.textContent = t('Schließen');
     close.addEventListener('click', () => note.remove());
-    links.append(supportLink(REPO_URL, '⭐ Stern auf GitHub geben'), supportLink(COFFEE_URL, '☕ Kaffee spendieren'), close);
+    links.append(supportLink(REPO_URL, t('⭐ Stern auf GitHub geben')), supportLink(COFFEE_URL, t('☕ Kaffee spendieren')), close);
     note.append(text, links);
     const messages = $('messages');
     messages.append(note);
@@ -388,7 +393,7 @@
           headers: { 'X-Filename': encodeURIComponent(file.name), 'Content-Type': 'application/octet-stream' },
           body: file,
         });
-        toast(`Hochgeladen: ${file.name} – du kannst die KI bitten, assets/${file.name} zu verwenden.`);
+        toast(t('Hochgeladen: {0} – du kannst die KI bitten, assets/{0} zu verwenden.', file.name));
       } catch (error) {
         toast(`${file.name}: ${error.message}`);
       }
@@ -427,18 +432,18 @@
   async function pollLogin() {
     const info = await api('/api/login').catch(() => null);
     if (!info || info.engine !== state.loginEngine) return;
-    $('login-status').textContent = info.state === 'failed' ? 'Die Anmeldung hat nicht geklappt. Bitte erneut versuchen.' : 'Warte auf die Anmeldung im Browser …';
+    $('login-status').textContent = info.state === 'failed' ? t('Die Anmeldung hat nicht geklappt. Bitte erneut versuchen.') : t('Warte auf die Anmeldung im Browser …');
     if (info.url) { $('login-link').href = info.url; $('login-link').hidden = false; }
     $('login-code').hidden = !ENGINES[state.loginEngine].usesCode || !/code/i.test(info.output || '');
     if (info.state === 'running') return;
     clearInterval(state.loginTimer);
-    if (info.state === 'done' && await checkLogin(true, state.loginEngine) === 'ok') toast('Angemeldet – los geht’s!');
+    if (info.state === 'done' && await checkLogin(true, state.loginEngine) === 'ok') toast(t('Angemeldet – los geht’s!'));
   }
 
   async function startLogin() {
     try {
       await postJson('/api/login', { engine: state.loginEngine });
-      $('login-status').textContent = 'Anmeldung wird gestartet …';
+      $('login-status').textContent = t('Anmeldung wird gestartet …');
       clearInterval(state.loginTimer);
       state.loginTimer = setInterval(pollLogin, LOGIN_POLL_MS);
     } catch (error) { toast(error.message); }
@@ -449,9 +454,9 @@
   function conversationMeta(conversation) {
     const parts = [];
     if (conversation.updated) parts.push(formatTime(conversation.updated));
-    parts.push(conversation.messages === 1 ? '1 Auftrag' : `${conversation.messages} Aufträge`);
+    parts.push(conversation.messages === 1 ? t('1 Auftrag') : t('{0} Aufträge', conversation.messages));
     if (conversation.engine) parts.push(conversation.engine === 'codex' ? 'ChatGPT' : 'Claude');
-    if (conversation.current) parts.push('aktuelles Gespräch');
+    if (conversation.current) parts.push(t('aktuelles Gespräch'));
     return parts.join(' · ');
   }
 
@@ -460,7 +465,7 @@
     const text = document.createElement('div');
     text.className = 'conversation-text';
     const title = document.createElement('strong');
-    title.textContent = conversation.title;
+    title.textContent = I18N.server(conversation.title);
     const meta = document.createElement('span');
     meta.className = 'conversation-meta';
     meta.textContent = conversationMeta(conversation);
@@ -476,7 +481,7 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'primary small';
-      button.textContent = 'Öffnen';
+      button.textContent = t('Öffnen');
       button.addEventListener('click', () => openConversation(conversation.id));
       item.append(button);
     }
@@ -490,7 +495,7 @@
     }
     const empty = document.createElement('li');
     empty.className = 'empty';
-    empty.textContent = $('conversation-search').value.trim() ? 'Keine passenden Gespräche gefunden.' : 'Noch keine Gespräche.';
+    empty.textContent = $('conversation-search').value.trim() ? t('Keine passenden Gespräche gefunden.') : t('Noch keine Gespräche.');
     $('conversation-list').replaceChildren(empty);
   }
 
@@ -509,7 +514,7 @@
   }
 
   async function openConversation(id) {
-    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
+    if (state.busy) { toast(t('Es läuft gerade noch ein Auftrag.')); return; }
     try {
       await postJson('/api/conversations/open', { id });
       $('conversations').hidden = true;
@@ -525,31 +530,33 @@
   function openUpdateDialog() {
     const info = state.update;
     if (!info) return;
-    $('update-title').textContent = 'Update verfügbar';
-    $('update-intro').textContent = `Version ${info.latest} ist verfügbar. Installiert ist ${info.current ? `Version ${info.current}` : 'eine ältere Version'}.`;
+    $('update-title').textContent = t('Update verfügbar');
+    $('update-intro').textContent = t('Version {0} ist verfügbar. Installiert ist {1}.', info.latest,
+      info.current ? t('Version {0}', info.current) : t('eine ältere Version'));
     $('update-changes').replaceChildren(...info.changes.map((change) => {
       const item = document.createElement('li');
       const versions = document.createElement('span');
-      versions.textContent = change.from ? ` ${change.from} → ${change.to}` : ` neu: ${change.to}`;
+      versions.textContent = change.from ? ` ${change.from} → ${change.to}` : t(' neu: {0}', change.to);
       item.append(change.name, versions);
       return item;
     }));
     $('update-note').hidden = false;
     $('update-start').hidden = false;
     $('update-start').disabled = state.busy;
-    $('update-close').textContent = 'Später';
-    $('update-status').textContent = state.busy ? 'Warte, bis der laufende Auftrag fertig ist.' : '';
+    $('update-close').textContent = t('Später');
+    $('update-status').textContent = state.busy ? t('Warte, bis der laufende Auftrag fertig ist.') : '';
     $('update').hidden = false;
   }
 
   function showUpdateFailure(result) {
-    $('update-title').textContent = 'Update hat nicht geklappt';
-    $('update-intro').textContent = `${result.message || 'Beim Update ist ein Fehler aufgetreten.'} Das Studio läuft mit der bisherigen Version weiter. Du kannst es später erneut versuchen.`;
+    $('update-title').textContent = t('Update hat nicht geklappt');
+    $('update-intro').textContent = t('{0} Das Studio läuft mit der bisherigen Version weiter. Du kannst es später erneut versuchen.',
+      I18N.server(result.message) || t('Beim Update ist ein Fehler aufgetreten.'));
     $('update-changes').replaceChildren();
     $('update-note').hidden = true;
     $('update-start').hidden = true;
-    $('update-close').textContent = 'Schließen';
-    $('update-status').textContent = result.log ? `Protokoll: ${result.log}` : '';
+    $('update-close').textContent = t('Schließen');
+    $('update-status').textContent = result.log ? t('Protokoll: {0}', result.log) : '';
     $('update').hidden = false;
   }
 
@@ -557,10 +564,10 @@
     try {
       const info = await api('/api/update' + (force ? '?force=1' : ''));
       state.update = info;
-      $('info-version').textContent = info.current ? `Version ${info.current}` : '';
+      $('info-version').textContent = info.current ? t('Version {0}', info.current) : '';
       $('update-open').hidden = !info.available;
       if (info.result) {
-        if (info.result.ok) toast(`Update installiert – du nutzt jetzt Version ${info.result.version}.`);
+        if (info.result.ok) toast(t('Update installiert – du nutzt jetzt Version {0}.', info.result.version));
         else showUpdateFailure(info.result);
         postJson('/api/update/ack').catch(() => { /* wird beim nächsten Start erneut gemeldet */ });
       }
@@ -568,17 +575,17 @@
   }
 
   async function startUpdate() {
-    if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
+    if (state.busy) { toast(t('Es läuft gerade noch ein Auftrag.')); return; }
     $('update-start').disabled = true;
     $('update-close').disabled = true;
     try {
       await postJson('/api/update/start');
       state.updating = true;
-      $('update-status').textContent = 'Das Studio wird aktualisiert … Das kann einige Minuten dauern. Danach öffnet es sich in einem neuen Tab, und du kannst diesen hier schließen.';
+      $('update-status').textContent = t('Das Studio wird aktualisiert … Das kann einige Minuten dauern. Danach öffnet es sich in einem neuen Tab, und du kannst diesen hier schließen.');
       setTimeout(() => {
-        $('update-status').textContent = 'Das Studio hat sich nicht wieder gemeldet. Starte es bitte über das Symbol „Motion Studio“. Es zeigt dann, ob das Update geklappt hat.';
+        $('update-status').textContent = t('Das Studio hat sich nicht wieder gemeldet. Starte es bitte über das Symbol „Motion Studio“. Es zeigt dann, ob das Update geklappt hat.');
         $('update-close').disabled = false;
-        $('update-close').textContent = 'Schließen';
+        $('update-close').textContent = t('Schließen');
       }, UPDATE_GIVE_UP_MS);
     } catch (error) {
       $('update-status').textContent = error.message;
@@ -590,6 +597,9 @@
   // ------------------------------------------------------------ Start
 
   function setupControls() {
+    I18N.applyToPage();
+    $('lang').value = I18N.lang;
+    $('lang').addEventListener('change', () => I18N.setLanguage($('lang').value));
     try { $('model').value = localStorage.getItem('studio-model') || DEFAULT_MODEL; } catch (e) { /* ohne Speicher */ }
     if (!$('model').value) $('model').value = DEFAULT_MODEL;
     $('model').addEventListener('change', async () => {
@@ -603,8 +613,8 @@
     });
     $('stop').addEventListener('click', () => postJson('/api/stop').catch((e) => toast(e.message)));
     $('new-project').addEventListener('click', async () => {
-      if (state.busy) { toast('Es läuft gerade noch ein Auftrag.'); return; }
-      if (!window.confirm('Neues Gespräch beginnen? Deine Videos und Dateien bleiben erhalten.')) return;
+      if (state.busy) { toast(t('Es läuft gerade noch ein Auftrag.')); return; }
+      if (!window.confirm(t('Neues Gespräch beginnen? Deine Videos und Dateien bleiben erhalten.'))) return;
       try {
         await postJson('/api/reset');
         reloadConversation();
@@ -649,7 +659,7 @@
 
     $('login-start').addEventListener('click', startLogin);
     $('login-check').addEventListener('click', async () => {
-      if (await checkLogin(true, state.loginEngine) !== 'ok') $('login-status').textContent = 'Noch nicht angemeldet.';
+      if (await checkLogin(true, state.loginEngine) !== 'ok') $('login-status').textContent = t('Noch nicht angemeldet.');
     });
     $('login-code-send').addEventListener('click', () => {
       postJson('/api/login/code', { code: $('login-code-input').value }).catch((e) => toast(e.message));

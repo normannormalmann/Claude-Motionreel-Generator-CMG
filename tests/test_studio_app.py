@@ -112,6 +112,15 @@ class HelperTests(unittest.TestCase):
             self.assertIn("projekte/2026-10-20_1412_Intro/", joined)
         self.assertNotIn("exports/", " ".join(engines.ClaudeEngine().chat_args("m", None)).replace("im Ordner exports", ""))
 
+    def test_ai_answers_in_the_chosen_language(self):
+        self.assertIn("Antworte auf Deutsch", engines.system_prompt(None))
+        self.assertIn("Antworte auf Englisch", engines.system_prompt(None, "en"))
+        args = engines.ClaudeEngine().chat_args("m", None, None, "en")
+        self.assertIn("Antworte auf Englisch", " ".join(args))
+        # Unbekannte oder manipulierte Angaben aus der Anfrage fallen auf Deutsch zurück.
+        for value in (None, "fr", {"a": 1}, ["en"], 3):
+            self.assertEqual(engines.answer_language(value), "de")
+
     def test_conversation_folder_names_are_safe_and_unique(self):
         with tempfile.TemporaryDirectory() as temp:
             name = conversation_folder_name("../../Geheim: Intro für „Café“!", [temp], 0)
@@ -629,7 +638,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 self.assertTrue(page.url.endswith("/"), "Startkennung muss aus der Adresse verschwinden")
                 page.get_by_role("button", name="Showreel").click()
@@ -650,6 +659,38 @@ class BrowserTests(ServerTestCase):
             finally:
                 browser.close()
 
+    def test_english_browser_gets_english_studio_and_can_switch(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright nicht installiert")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page(locale="en-US")
+                page.goto(self.server.launch_url)
+                self.assertEqual(page.locator("html").get_attribute("lang"), "en")
+                self.assertEqual(page.locator("#new-project").inner_text(), "New conversation")
+                self.assertIn("What would you like", page.locator("#welcome h2").inner_text())
+                # Eingebaute Vorlagen erscheinen übersetzt.
+                page.get_by_role("button", name="Product film").click()
+                self.assertTrue(page.locator("#preset-fill").is_visible())
+                page.locator("#preset-fill [data-close]").click()
+                page.locator("#prompt").fill("Intro")
+                page.get_by_role("button", name="Send").click()
+                page.locator(".done-note").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(page.locator(".done-note").inner_text(), "✓ Done")
+                # Deutsche Arbeitsschritte vom Server werden übersetzt, Dateinamen bleiben erhalten.
+                self.assertIn("Creates fake.mp4", page.locator("#messages").inner_text())
+                page.get_by_role("button", name="Info").click()
+                self.assertIn("disclaimer", page.locator("#info [data-i18n-html]").inner_text())
+                page.select_option("#lang", "de")
+                page.locator("#new-project").filter(has_text="Neues Gespräch").wait_for(timeout=WAIT_SECONDS * 1000)
+                self.assertEqual(page.locator("html").get_attribute("lang"), "de")
+                self.assertIn("Erstellt fake.mp4", page.locator("#messages").inner_text())
+            finally:
+                browser.close()
+
     def test_support_hint_appears_only_after_first_video(self):
         try:
             from playwright.sync_api import sync_playwright
@@ -658,7 +699,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 hint = page.locator(".support-hint")
                 for run in range(2):
@@ -683,7 +724,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 page.get_by_role("button", name="Update verfügbar").click()
                 self.assertIn("Version 99.0.0", page.locator("#update-intro").inner_text())
@@ -702,7 +743,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 page.wait_for_function("() => document.getElementById('info-version').textContent !== ''")
                 self.assertTrue(page.locator("#update-open").is_hidden())
@@ -723,7 +764,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 card = page.locator(".media-card", has_text="intro_vorschau.mp4")
                 card.locator(".media-badge", has_text="Vorschau").wait_for(timeout=WAIT_SECONDS * 1000)
@@ -747,7 +788,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 page.get_by_role("button", name="Gespräche").click()
                 page.locator("#conversation-search").fill("café")
@@ -771,7 +812,7 @@ class BrowserTests(ServerTestCase):
         with sync_playwright() as p:
             browser = p.chromium.launch()
             try:
-                page = browser.new_page()
+                page = browser.new_page(locale="de-DE")
                 page.goto(self.server.launch_url)
                 page.locator("#model").select_option("codex-max")
                 page.locator("#prompt").fill("Ein kurzes Intro")

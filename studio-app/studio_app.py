@@ -29,7 +29,7 @@ import media_files as media  # noqa: E402
 import platform_support as ps  # noqa: E402
 from claude_bridge import BusyError, EngineMissingError, StudioBridge  # noqa: E402
 from conversations import ConversationNotFoundError  # noqa: E402
-from engines import ENGINES  # noqa: E402
+from engines import ENGINES, answer_language  # noqa: E402
 from presets import PresetError, PresetStore  # noqa: E402
 from updates import UpdateChecker, UpdateUnavailableError  # noqa: E402
 
@@ -44,7 +44,7 @@ COOKIE_NAME = "motion_studio"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
     "app.css": "text/css; charset=utf-8", "app.js": "text/javascript; charset=utf-8",
-    "presets.js": "text/javascript; charset=utf-8",
+    "presets.js": "text/javascript; charset=utf-8", "i18n.js": "text/javascript; charset=utf-8",
     "favicon.png": "image/png", "apple-touch-icon.png": "image/png",
 }
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
@@ -56,7 +56,9 @@ LOCKED_PAGE = (
     "<link rel='icon' type='image/png' href='/static/favicon.png'>"
     "<body style='font-family:system-ui;max-width:32rem;margin:15vh auto;padding:0 16px'>"
     "<h1>Motion Studio</h1><p>Bitte öffne das Studio über das Symbol <strong>„Motion Studio“</strong> "
-    "auf deinem Desktop bzw. Schreibtisch.</p></body>"
+    "auf deinem Desktop bzw. Schreibtisch.</p>"
+    "<p lang='en'>Please open the studio using the <strong>“Motion Studio”</strong> icon "
+    "on your desktop.</p></body>"
 )
 
 
@@ -256,7 +258,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             with self.server.job_lock:
                 if self.server.updating:
                     return self._send_error(HTTPStatus.CONFLICT, "Das Studio wird gerade aktualisiert.")
-                bridge.start_chat(message, str(data.get("model", "")))
+                bridge.start_chat(message, str(data.get("model", "")), answer_language(data.get("lang")))
         elif path == "/api/stop":
             bridge.stop()
         elif path == "/api/reset":

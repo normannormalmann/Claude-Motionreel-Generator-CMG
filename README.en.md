@@ -155,6 +155,12 @@ You can also switch in the middle of a conversation. The new service doesn't kno
 
 ---
 
+## Language
+
+The studio is available in **German** and **English**. It follows your browser's language. You can change it in the studio under **"Info" → "Language"**. The AI then answers in that language too.
+
+---
+
 ## Updates
 
 Once a day, the studio checks whether a new version is available. If there is one, an **"Update verfügbar"** (update available) button appears at the top. Click it to see what changes, then **"Jetzt aktualisieren"** (update now) installs the update:

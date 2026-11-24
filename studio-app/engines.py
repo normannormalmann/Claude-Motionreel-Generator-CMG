@@ -17,10 +17,13 @@ SHELL_WRAPPER = re.compile(r'^\s*("[^"]*"|\S+)\s+(?:-NoProfile\s+)?(?:-Command|-
                            re.DOTALL | re.IGNORECASE)
 FILE_VERBS = {"add": "Erstellt ", "update": "Bearbeitet ", "delete": "Löscht "}
 SESSION_ID_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z_-]{7,63}")
+# Sprache, in der die KI antwortet – passend zur Sprache der Oberfläche.
+ANSWER_LANGUAGES = {"de": "Deutsch", "en": "Englisch (English)"}
+DEFAULT_LANGUAGE = "de"
 
 APP_SYSTEM_PROMPT = (
     "Du arbeitest im Motion Studio, einer grafischen Oberfläche. Die Person sieht keine Konsole, "
-    "nur deine Textantworten und die Videos im Ordner exports. Antworte auf Deutsch, kurz und ohne "
+    "nur deine Textantworten und die Videos im Ordner exports. Antworte auf {language}, kurz und ohne "
     "Fachjargon. Brauchst du eine Entscheidung oder Freigabe, stelle die Frage am Ende deiner "
     "Antwort und warte auf die nächste Nachricht. Nenne fertige Videos immer mit ihrem Dateinamen. "
     "Rendere bei neuen Videos und bei Änderungen immer nur eine Vorschau in niedriger Auflösung "
@@ -42,9 +45,15 @@ def conversation_instructions(folder):
     ).format(folder)
 
 
-def system_prompt(folder):
+def answer_language(lang):
+    """Nur bekannte Sprachkürzel; alles andere (auch Nicht-Text aus der Anfrage) wird Deutsch."""
+    return lang if isinstance(lang, str) and lang in ANSWER_LANGUAGES else DEFAULT_LANGUAGE
+
+
+def system_prompt(folder, lang=DEFAULT_LANGUAGE):
     extra = conversation_instructions(folder)
-    return APP_SYSTEM_PROMPT + ("\n\n" + extra if extra else "")
+    prompt = APP_SYSTEM_PROMPT.format(language=ANSWER_LANGUAGES[answer_language(lang)])
+    return prompt + ("\n\n" + extra if extra else "")
 
 
 class RunState:
@@ -134,11 +143,11 @@ class ClaudeEngine:
     def command(self):
         return ps.claude_command()
 
-    def chat_args(self, model, session_id, folder=None):
+    def chat_args(self, model, session_id, folder=None, lang=DEFAULT_LANGUAGE):
         args = [
             "-p", "--output-format", "stream-json", "--verbose",
             "--model", model, "--permission-mode", "acceptEdits",
-            "--append-system-prompt", system_prompt(folder),
+            "--append-system-prompt", system_prompt(folder, lang),
         ]
         if session_id:
             args += ["--resume", session_id]
@@ -183,7 +192,7 @@ class CodexEngine:
     def command(self):
         return ps.codex_command()
 
-    def chat_args(self, model, session_id, folder=None):
+    def chat_args(self, model, session_id, folder=None, lang=DEFAULT_LANGUAGE):
         # Volle Benutzerrechte wie bei Claude (acceptEdits + Bash): Die Codex-Sandbox kann unter Windows
         # nicht zuverlässig rendern. Dafür bekommt Codex wie Claude keine Websuche, keine Apps und keine
         # MCP-Server – fremde Webinhalte sollen nicht ungefragt Befehle mit Benutzerrechten auslösen.
@@ -194,7 +203,7 @@ class CodexEngine:
             "--dangerously-bypass-approvals-and-sandbox", "-m", model,
             "-c", 'web_search="disabled"', "-c", "features.apps=false", "-c", "mcp_servers={}",
             "-c", 'project_doc_fallback_filenames=["CLAUDE.md"]',
-            "-c", "developer_instructions=" + json.dumps(system_prompt(folder)),
+            "-c", "developer_instructions=" + json.dumps(system_prompt(folder, lang)),
         ]
         if session_id:
             args.append(session_id)

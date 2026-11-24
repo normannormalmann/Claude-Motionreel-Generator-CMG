@@ -6,14 +6,15 @@
   const MAX_COLORS = 6;
   const DEFAULT_COLOR = '#E8551F';
   const FORMAT_LABELS = {
-    '16:9': '16:9 Querformat (1920 × 1080 Pixel)',
-    '9:16': '9:16 Hochformat (1080 × 1920 Pixel)',
-    '1:1': '1:1 Quadrat (1080 × 1080 Pixel)',
-    '4:5': '4:5 Hochformat (1080 × 1350 Pixel)',
+    '16:9': window.CMGI18n.t('16:9 Querformat (1920 × 1080 Pixel)'),
+    '9:16': window.CMGI18n.t('9:16 Hochformat (1080 × 1920 Pixel)'),
+    '1:1': window.CMGI18n.t('1:1 Quadrat (1080 × 1080 Pixel)'),
+    '4:5': window.CMGI18n.t('4:5 Hochformat (1080 × 1350 Pixel)'),
   };
   const OVERLAYS = ['preset-fill', 'preset-manager', 'preset-editor'];
 
   const $ = (id) => document.getElementById(id);
+  const { t } = window.CMGI18n;
   let ctx = null;
   let presets = [];
   let editingId = null;
@@ -26,12 +27,12 @@
   function brandLines(brand) {
     if (!brand) return [];
     const lines = [];
-    if (brand.format) lines.push(`Format: ${FORMAT_LABELS[brand.format] || brand.format}`);
-    if (brand.duration) lines.push(`Länge: ${brand.duration} Sekunden`);
-    if (brand.colors && brand.colors.length) lines.push(`Farben: ${brand.colors.join(', ')} – verwende genau diese Farben`);
-    if (brand.fonts) lines.push(`Schriften: ${brand.fonts}`);
-    if (brand.logo) lines.push(`Logo: ${brand.logo} – binde es gut sichtbar ein`);
-    if (brand.notes) lines.push(`Weitere Hinweise: ${brand.notes}`);
+    if (brand.format) lines.push(t('Format: {0}', FORMAT_LABELS[brand.format] || brand.format));
+    if (brand.duration) lines.push(t('Länge: {0} Sekunden', brand.duration));
+    if (brand.colors && brand.colors.length) lines.push(t('Farben: {0} – verwende genau diese Farben', brand.colors.join(', ')));
+    if (brand.fonts) lines.push(t('Schriften: {0}', brand.fonts));
+    if (brand.logo) lines.push(t('Logo: {0} – binde es gut sichtbar ein', brand.logo));
+    if (brand.notes) lines.push(t('Weitere Hinweise: {0}', brand.notes));
     return lines;
   }
 
@@ -39,7 +40,7 @@
     let text = preset.text.replace(PLACEHOLDER, (match, name) => (values[name.trim()] || '').trim() || match);
     const lines = brandLines(preset.brand);
     if (lines.length) {
-      text += `\n\nVorgaben aus der Vorlage „${preset.name}“ (haben Vorrang vor Standardwerten):\n`
+      text += `\n\n${t('Vorgaben aus der Vorlage „{0}“ (haben Vorrang vor Standardwerten):', preset.name)}\n`
         + lines.map((line) => `- ${line}`).join('\n');
     }
     return text;
@@ -72,7 +73,7 @@
   // Schließen auf Wunsch: Beim Editor nur nach Rückfrage, falls etwas geändert wurde.
   function requestClose(id) {
     if (id === 'preset-editor' && JSON.stringify(collectEditor()) !== editorSnapshot
-        && !window.confirm('Ungespeicherte Änderungen verwerfen?')) return;
+        && !window.confirm(t('Ungespeicherte Änderungen verwerfen?'))) return;
     close(id);
   }
 
@@ -89,12 +90,12 @@
     const bar = $('templates');
     bar.replaceChildren(...presets.map((preset) => {
       const chip = makeButton(preset.name, () => usePreset(preset), preset.builtin ? '' : 'chip-own');
-      if (preset.brand) { chip.classList.add('chip-brand'); chip.title = 'Mit Marken-Vorgaben'; }
+      if (preset.brand) { chip.classList.add('chip-brand'); chip.title = t('Mit Marken-Vorgaben'); }
       return chip;
     }));
     bar.append(
-      makeButton('＋ Als Vorlage speichern', () => openEditor(null, { text: ctx.prompt.value }), 'chip-action'),
-      makeButton('Vorlagen verwalten', openManager, 'chip-action'),
+      makeButton(t('＋ Als Vorlage speichern'), () => openEditor(null, { text: ctx.prompt.value }), 'chip-action'),
+      makeButton(t('Vorlagen verwalten'), openManager, 'chip-action'),
     );
   }
 
@@ -102,7 +103,7 @@
     const names = placeholders(preset.text);
     if (!names.length && !preset.brand) { close('preset-manager'); setPrompt(compose(preset, {})); return; }
     filling = preset;
-    $('fill-title').textContent = `Vorlage „${preset.name}“`;
+    $('fill-title').textContent = t('Vorlage „{0}“', preset.name);
     const form = $('fill-form');
     form.replaceChildren(...names.map((name, index) => {
       const label = document.createElement('label');
@@ -125,7 +126,7 @@
     container.hidden = !lines.length;
     if (!lines.length) return;
     const head = document.createElement('strong');
-    head.textContent = 'Marken-Vorgaben';
+    head.textContent = t('Marken-Vorgaben');
     const list = document.createElement('ul');
     lines.forEach((line) => { const li = document.createElement('li'); li.textContent = line; list.append(li); });
     const swatches = document.createElement('div');
@@ -148,10 +149,10 @@
   }
 
   function presetMeta(preset) {
-    const parts = [preset.builtin ? 'eingebaut' : 'eigene Vorlage'];
+    const parts = [preset.builtin ? t('eingebaut') : t('eigene Vorlage')];
     const count = placeholders(preset.text).length;
-    if (count) parts.push(`${count} ${count === 1 ? 'Platzhalter' : 'Platzhalter'}`);
-    if (preset.brand) parts.push('mit Marken-Vorgaben');
+    if (count) parts.push(t('{0} Platzhalter', count));
+    if (preset.brand) parts.push(t('mit Marken-Vorgaben'));
     return parts.join(' · ');
   }
 
@@ -168,14 +169,14 @@
       info.append(name, meta);
       const actions = document.createElement('div');
       actions.className = 'preset-actions';
-      actions.append(makeButton('Verwenden', () => usePreset(preset), 'ghost small'));
+      actions.append(makeButton(t('Verwenden'), () => usePreset(preset), 'ghost small'));
       if (preset.builtin) {
-        actions.append(makeButton('Kopieren', () => openEditor(preset, { copy: true }), 'ghost small'));
+        actions.append(makeButton(t('Kopieren'), () => openEditor(preset, { copy: true }), 'ghost small'));
       } else {
         actions.append(
-          makeButton('Bearbeiten', () => openEditor(preset), 'ghost small'),
-          makeButton('Kopieren', () => openEditor(preset, { copy: true }), 'ghost small'),
-          makeButton('Löschen', () => deletePreset(preset), 'danger small'),
+          makeButton(t('Bearbeiten'), () => openEditor(preset), 'ghost small'),
+          makeButton(t('Kopieren'), () => openEditor(preset, { copy: true }), 'ghost small'),
+          makeButton(t('Löschen'), () => deletePreset(preset), 'danger small'),
         );
       }
       item.append(info, actions);
@@ -194,9 +195,9 @@
     const input = document.createElement('input');
     input.type = 'color';
     input.value = value || DEFAULT_COLOR;
-    input.setAttribute('aria-label', 'Farbe');
+    input.setAttribute('aria-label', t('Farbe'));
     const remove = makeButton('×', () => { wrapper.remove(); updateColorButton(); }, 'ghost small');
-    remove.setAttribute('aria-label', 'Farbe entfernen');
+    remove.setAttribute('aria-label', t('Farbe entfernen'));
     wrapper.append(input, remove);
     colors.append(wrapper);
     updateColorButton();
@@ -210,7 +211,7 @@
     const select = $('ed-logo');
     const images = ctx.getAssets().filter((file) => file.type === 'image').map((file) => `assets/${file.name}`);
     if (selected && !images.includes(selected)) images.push(selected);
-    const none = new Option('kein Logo', '');
+    const none = new Option(t('kein Logo'), '');
     select.replaceChildren(none, ...images.map((path) => new Option(path.replace('assets/', ''), path)));
     select.value = selected || '';
   }
@@ -218,15 +219,15 @@
   function updatePlaceholderHint() {
     const names = placeholders($('ed-text').value);
     $('ed-placeholders').textContent = names.length
-      ? `Wird beim Verwenden abgefragt: ${names.join(', ')}` : 'Keine Platzhalter erkannt.';
+      ? t('Wird beim Verwenden abgefragt: {0}', names.join(', ')) : t('Keine Platzhalter erkannt.');
   }
 
   function openEditor(preset, options = {}) {
     const source = preset || { name: '', text: options.text || '', brand: null };
     const brand = source.brand || {};
     editingId = preset && !preset.builtin && !options.copy ? preset.id : null;
-    $('editor-title').textContent = editingId ? 'Vorlage bearbeiten' : 'Neue Vorlage';
-    $('ed-name').value = options.copy ? `${source.name} (Kopie)` : source.name;
+    $('editor-title').textContent = editingId ? t('Vorlage bearbeiten') : t('Neue Vorlage');
+    $('ed-name').value = options.copy ? t('{0} (Kopie)', source.name) : source.name;
     $('ed-text').value = source.text;
     $('ed-format').value = brand.format || '';
     $('ed-duration').value = brand.duration || '';
@@ -265,7 +266,7 @@
       await ctx.postJson('/api/presets/save', { preset: collectEditor() });
       close('preset-editor');
       await load();
-      ctx.toast('Vorlage gespeichert.');
+      ctx.toast(t('Vorlage gespeichert.'));
     } catch (error) {
       $('ed-error').textContent = error.message;
       $('ed-error').hidden = false;
@@ -273,12 +274,12 @@
   }
 
   async function deletePreset(preset) {
-    if (!window.confirm(`Vorlage „${preset.name}“ wirklich löschen?`)) return;
+    if (!window.confirm(t('Vorlage „{0}“ wirklich löschen?', preset.name))) return;
     try {
       await ctx.postJson('/api/presets/delete', { id: preset.id });
       await load();
       openManager();
-      ctx.toast('Vorlage gelöscht.');
+      ctx.toast(t('Vorlage gelöscht.'));
     } catch (error) { ctx.toast(error.message); }
   }
 
@@ -289,8 +290,8 @@
       });
       await load();
       openManager();
-      const skipped = result.skipped ? `, ${result.skipped} übersprungen` : '';
-      ctx.toast(`${result.imported} Vorlage(n) importiert${skipped}.`);
+      const skipped = result.skipped ? t(', {0} übersprungen', result.skipped) : '';
+      ctx.toast(t('{0} Vorlage(n) importiert{1}.', result.imported, skipped));
     } catch (error) { ctx.toast(error.message); }
   }
 
@@ -298,7 +299,7 @@
 
   async function load() {
     try {
-      presets = (await ctx.api('/api/presets')).presets || [];
+      presets = ((await ctx.api('/api/presets')).presets || []).map(window.CMGI18n.localizePreset);
       renderChips();
     } catch (error) { ctx.toast(error.message); }
   }
