@@ -10,6 +10,8 @@ Du beschreibst Claude in normalen Worten, welches Video du möchtest. Claude bau
 
 Dieses Paket installiert alles, was dafür nötig ist. Technische Vorkenntnisse brauchst du nicht.
 
+<sub>Gefällt dir das Projekt? Ein ⭐ oben rechts auf GitHub oder ein [Kaffee](https://buymeacoffee.com/normanschou) hilft sehr – mehr unter [Projekt unterstützen](#projekt-unterstützen).</sub>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/studio-dunkel.png">
   <img src="docs/images/studio-hell.png" alt="Das Motion Studio: links der Chat mit Claude, rechts das fertige Video und Vorschaubilder" width="100%">
@@ -219,6 +221,17 @@ Am Ende rendert der Installer automatisch eine kurze Testanimation. So ist siche
 - **Claude Code direkt in der Konsole:** `studio-im-terminal.ps1` (Windows) oder `studio-im-terminal.sh` (Mac/Linux) im Studio-Ordner.
 - **Protokoll der Studio-App:** `studio-app.log` im Programmdaten-Ordner (`%LOCALAPPDATA%\Claude-Motion-Studio` bzw. `~/.local/share/claude-motion-studio`).
 - Jede Änderung wird automatisch unter Windows, macOS und Ubuntu getestet. Den Stand siehst du unter **Actions**.
+
+---
+
+## Projekt unterstützen
+
+Ich entwickle das Studio in meiner Freizeit und stelle es kostenlos zur Verfügung. Wenn es dir Arbeit abnimmt, freue ich mich über Unterstützung:
+
+- **Stern auf GitHub:** Klicke oben rechts auf dieser Seite auf **⭐ Star**. Das kostet nichts, dauert eine Sekunde und hilft anderen, das Projekt zu finden.
+- **Kaffee spendieren:** Über [Buy Me a Coffee](https://buymeacoffee.com/normanschou) kannst du mir einen Kaffee ausgeben. Jeder Kaffee hält das Projekt am Laufen.
+
+<a href="https://buymeacoffee.com/normanschou"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="44"></a>
 
 ---
 
